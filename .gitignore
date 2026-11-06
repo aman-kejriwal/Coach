@@ -1,0 +1,23 @@
+# Coach repo: the app lives in CoachApp/ (it has its own .gitignore for build output).
+
+# Local tool / agent config generated on this machine (Jetro, Cursor, Copilot, etc.)
+.jetro/
+.mcp.json
+.agents/
+.cursor/
+.claude/
+.github/copilot-instructions.md
+.windsurfrules
+AGENT.md
+CLAUDE.md
+data/
+projects/
+
+# macOS
+.DS_Store
+._*
+
+# Build output
+build/
+.build/
+DerivedData/

@@ -1,0 +1,32 @@
+# Build output
+build/
+.build/
+DerivedData/
+*.o
+*.a
+*.dSYM/
+
+# SwiftPM / Xcode
+.swiftpm/
+Package.resolved
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+*.xcuserstate
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Editors / tools
+.vscode/
+.idea/
+*.swp
+*~
+
+# Local secrets / env
+.env
+.env.*
