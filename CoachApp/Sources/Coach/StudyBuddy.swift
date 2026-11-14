@@ -2,7 +2,7 @@ import AppKit
 import CoachCore
 import SwiftUI
 
-/// A small cat, dog or panda that walks across the bottom of the screen now and then while today's
+/// A small cat, dog, panda, bee or bunny that walks (the bee flies, the bunny hops) across the bottom of the screen now and then while today's
 /// list isn't done, sits down in the middle and asks you to revise. It only visits while you're at
 /// the Mac (not idle), during the day, and never over full-screen apps.
 @MainActor
@@ -10,14 +10,14 @@ final class StudyBuddy {
     static let shared = StudyBuddy()
 
     static let enabledKey = "buddyEnabled"
-    static let speciesKey = "buddySpecies"        // "cat", "dog", "panda" or "random"
+    static let speciesKey = "buddySpecies"        // "cat", "dog", "panda", "bee", "bunny" or "random"
     static let intervalKey = "buddyIntervalHours" // hours between visits
 
     enum Species: String, CaseIterable, Identifiable {
-        case cat, dog, panda
+        case cat, dog, panda, bee, bunny
         var id: String { rawValue }
         var name: String { rawValue.capitalized }
-        var sound: String { ["Meow!", "Woof!", "Psst!"][Self.allCases.firstIndex(of: self)!] }
+        var sound: String { ["Meow!", "Woof!", "Psst!", "Bzz!", "Boing!"][Self.allCases.firstIndex(of: self)!] }
     }
 
     var enabled: Bool { UserDefaults.standard.object(forKey: Self.enabledKey) as? Bool ?? true }
@@ -337,6 +337,13 @@ struct CritterView: View {
         case .panda:
             let black = Color(white: 0.16)
             return Palette(body: .white, belly: .white, ear: black, innerEar: black, legs: black, tail: black)
+        case .bee:
+            let yellow = Color(red: 1.0, green: 0.82, blue: 0.25)
+            return Palette(body: yellow, belly: yellow, ear: yellow, innerEar: yellow, legs: Color(white: 0.16), tail: yellow)
+        case .bunny:
+            let fur = Color(red: 0.93, green: 0.89, blue: 0.84)
+            return Palette(body: fur, belly: .white, ear: fur, innerEar: Color(red: 1, green: 0.74, blue: 0.78),
+                           legs: fur, tail: .white)
         }
     }
 
@@ -344,8 +351,10 @@ struct CritterView: View {
         let pal = palette
         let outline = Color(white: 0.2)
         let phase = walking ? t * 9 : 0
-        let swing = walking ? sin(phase) : 0
-        let bob: CGFloat = walking ? CGFloat(abs(sin(phase))) * 1.6 : 0
+        let swing = walking && species != .bunny ? sin(phase) : 0
+        let bob: CGFloat = !walking ? 0
+            : species == .bunny ? CGFloat(abs(sin(phase * 0.5))) * 5 // hop
+            : CGFloat(abs(sin(phase))) * 1.6
         let blink = t.truncatingRemainder(dividingBy: 4.2) < 0.14
         let hx: CGFloat = 76, hy: CGFloat = 30 - bob
 
@@ -365,6 +374,120 @@ struct CritterView: View {
         func thickStroke(_ p: Path, _ color: Color, width: CGFloat) {
             g.stroke(p, with: .color(outline), style: StrokeStyle(lineWidth: width + 3.2, lineCap: .round))
             g.stroke(p, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .round))
+        }
+
+        func face(hx: CGFloat, hy: CGFloat) {
+            let eyes = [CGPoint(x: hx - 6.5, y: hy - 1), CGPoint(x: hx + 6.5, y: hy - 1)]
+            if species == .panda {
+                g.fill(ellipse(eyes[0].x - 0.5, eyes[0].y + 0.5, 9, 11.5, angle: 0.45), with: .color(Color(white: 0.16)))
+                g.fill(ellipse(eyes[1].x + 0.5, eyes[1].y + 0.5, 9, 11.5, angle: -0.45), with: .color(Color(white: 0.16)))
+            }
+            for e in eyes {
+                if blink {
+                    var lid = Path()
+                    lid.move(to: CGPoint(x: e.x - 2.2, y: e.y))
+                    lid.addQuadCurve(to: CGPoint(x: e.x + 2.2, y: e.y), control: CGPoint(x: e.x, y: e.y + 1.6))
+                    g.stroke(lid, with: .color(species == .panda ? .white : outline), style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
+                } else if happy {
+                    var smile = Path() // ^ ^ eyes
+                    smile.move(to: CGPoint(x: e.x - 2.4, y: e.y + 1))
+                    smile.addQuadCurve(to: CGPoint(x: e.x + 2.4, y: e.y + 1), control: CGPoint(x: e.x, y: e.y - 2.6))
+                    g.stroke(smile, with: .color(species == .panda ? .white : outline), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                } else {
+                    g.fill(ellipse(e.x, e.y, 4, 5), with: .color(species == .panda ? .white : Color(white: 0.12)))
+                    if species == .panda { g.fill(ellipse(e.x, e.y + 0.3, 2.4, 3), with: .color(Color(white: 0.12))) }
+                    g.fill(ellipse(e.x + 0.8, e.y - 1, 1.3, 1.3), with: .color(.white))
+                }
+            }
+            // Blush.
+            for x in [hx - 10.5, hx + 10.5] {
+                g.fill(ellipse(x, hy + 5, 5, 3), with: .color(Color(red: 1, green: 0.55, blue: 0.6).opacity(0.55)))
+            }
+            // Nose and mouth.
+            let ny = hy + 4.5
+            switch species {
+            case .bee:
+                break
+            case .bunny:
+                g.fill(ellipse(hx, ny - 0.3, 3.6, 2.6), with: .color(Color(red: 1, green: 0.55, blue: 0.62)))
+            case .cat:
+                var nose = Path()
+                nose.move(to: CGPoint(x: hx - 1.8, y: ny - 1))
+                nose.addLine(to: CGPoint(x: hx + 1.8, y: ny - 1))
+                nose.addLine(to: CGPoint(x: hx, y: ny + 1))
+                nose.closeSubpath()
+                g.fill(nose, with: .color(Color(red: 1, green: 0.5, blue: 0.58)))
+            default:
+                g.fill(ellipse(hx, ny, species == .dog ? 5 : 4, species == .dog ? 3.4 : 2.8), with: .color(Color(white: 0.14)))
+            }
+            if species == .dog && happy {
+                g.fill(Path(roundedRect: CGRect(x: hx - 2, y: ny + 2.5, width: 4, height: 5), cornerRadius: 2),
+                       with: .color(Color(red: 1, green: 0.45, blue: 0.5)))
+            }
+            var mouth = Path()
+            mouth.move(to: CGPoint(x: hx - 3, y: ny + 2))
+            mouth.addQuadCurve(to: CGPoint(x: hx, y: ny + 2.2), control: CGPoint(x: hx - 1.5, y: ny + 4))
+            mouth.addQuadCurve(to: CGPoint(x: hx + 3, y: ny + 2), control: CGPoint(x: hx + 1.5, y: ny + 4))
+            g.stroke(mouth, with: .color(outline), style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+
+            if species == .cat || species == .bunny { // whiskers
+                for (from, to) in [((hx - 12, ny), (hx - 21, ny - 2)), ((hx - 12, ny + 2), (hx - 21, ny + 3.5)),
+                                   ((hx + 12, ny), (hx + 21, ny - 2)), ((hx + 12, ny + 2), (hx + 21, ny + 3.5))] {
+                    var w = Path()
+                    w.move(to: CGPoint(x: from.0, y: from.1))
+                    w.addLine(to: CGPoint(x: to.0, y: to.1))
+                    g.stroke(w, with: .color(outline.opacity(0.7)), style: StrokeStyle(lineWidth: 0.9, lineCap: .round))
+                }
+            }
+        }
+
+        // The bee flies instead of walking: it hovers up and down, wings fluttering fast while it travels.
+        if species == .bee {
+            let hover = CGFloat(sin(t * (walking ? 5 : 2.4))) * 2.5 + (happy ? -4 : 0)
+            let by: CGFloat = 40 + hover
+            let flap = sin(t * (walking ? 38 : 16)) * 0.3
+
+            // Shadow far below (it's in the air), shrinking a little as it rises.
+            let sw = 40 + hover * 1.5
+            g.fill(Path(ellipseIn: CGRect(x: 52 - sw / 2, y: 72, width: sw, height: 5)), with: .color(.black.opacity(0.08)))
+            // Wings behind the body, slightly see-through.
+            let wing = Color(red: 0.82, green: 0.93, blue: 1.0).opacity(0.85)
+            shape(ellipse(38, by - 18, 18, 26, angle: -0.5 + flap), wing, line: 1.3)
+            shape(ellipse(52, by - 20, 18, 28, angle: 0.35 - flap), wing, line: 1.3)
+            // Stinger.
+            var sting = Path()
+            sting.move(to: CGPoint(x: 22, y: by - 3)); sting.addLine(to: CGPoint(x: 13, y: by + 1))
+            sting.addLine(to: CGPoint(x: 22, y: by + 5)); sting.closeSubpath()
+            shape(sting, Color(white: 0.2))
+            // Tiny dangling legs.
+            for x in [40.0, 50.0, 60.0] {
+                var l = Path()
+                l.move(to: CGPoint(x: x, y: by + 14)); l.addLine(to: CGPoint(x: x - 2, y: by + 21))
+                g.stroke(l, with: .color(outline), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            }
+            // Striped body.
+            let body = ellipse(44, by, 46, 32)
+            g.fill(body, with: .color(pal.body))
+            var inside = g
+            inside.clip(to: body)
+            for x in [30.0, 44.0] {
+                inside.fill(Path(CGRect(x: x, y: by - 20, width: 7, height: 40)), with: .color(Color(white: 0.16)))
+            }
+            g.stroke(body, with: .color(outline), lineWidth: 1.6)
+            // Antennae, bouncing a little.
+            let wobble = CGFloat(sin(t * 6)) * 1.5
+            for (dx, tipx) in [(-5.0, 64.0), (5.0, 86.0)] {
+                let tip = CGPoint(x: tipx, y: by - 38 + wobble)
+                var a = Path()
+                a.move(to: CGPoint(x: 76 + dx, y: by - 22))
+                a.addQuadCurve(to: tip, control: CGPoint(x: 76 + dx * 1.6, y: by - 34))
+                g.stroke(a, with: .color(outline), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                g.fill(ellipse(tip.x, tip.y, 4.5, 4.5), with: .color(Color(white: 0.16)))
+            }
+            // Head and face.
+            shape(ellipse(76, by - 6, 32, 30), pal.body)
+            face(hx: 76, hy: by - 6)
+            return
         }
 
         // Shadow.
@@ -388,14 +511,23 @@ struct CritterView: View {
                         pal.tail, width: 6)
         case .panda:
             shape(ellipse(25, 43 - bob, 10, 10), pal.tail)
+        case .bunny: // fluffy cotton tail
+            shape(ellipse(24, 42 - bob, 13, 13), pal.tail)
+        case .bee:
+            break
         }
 
         // Far legs (a touch darker), body, near legs.
         let far = species == .panda ? pal.legs : pal.legs.opacity(0.85)
-        leg(36, -swing * 0.38, far)
-        leg(66, swing * 0.38, far)
+        if species == .bunny { // big hind foot tucked under the back, small front paw
+            shape(ellipse(35, 63 - bob, 18, 8), far)
+            leg(66, swing * 0.38, far)
+        } else {
+            leg(36, -swing * 0.38, far)
+            leg(66, swing * 0.38, far)
+        }
 
-        let body = ellipse(50, 47 - bob, 54, 30)
+        let body = species == .bunny ? ellipse(48, 48 - bob, 50, 32) : ellipse(50, 47 - bob, 54, 30)
         shape(body, pal.body)
         var inside = g
         inside.clip(to: body)
@@ -406,8 +538,13 @@ struct CritterView: View {
         }
         g.stroke(body, with: .color(outline), lineWidth: 1.6)
 
-        leg(42, swing * 0.38, pal.legs)
-        leg(72, -swing * 0.38, pal.legs)
+        if species == .bunny {
+            shape(ellipse(39, 64 - bob, 18, 8), pal.legs)
+            leg(72, 0, pal.legs)
+        } else {
+            leg(42, swing * 0.38, pal.legs)
+            leg(72, -swing * 0.38, pal.legs)
+        }
 
         // Ears behind the head (cat, panda).
         switch species {
@@ -425,7 +562,13 @@ struct CritterView: View {
         case .panda:
             shape(ellipse(63, 16 - bob, 12, 12), pal.ear)
             shape(ellipse(89, 16 - bob, 12, 12), pal.ear)
-        case .dog:
+        case .bunny: // long upright ears; the right one flops over when happy
+            let tilt = happy ? 0.55 : 0.12 + (walking ? sin(phase * 0.5) * 0.08 : 0)
+            shape(ellipse(69, 6 - bob, 10, 28, angle: -0.18), pal.ear)
+            g.fill(ellipse(69, 7 - bob, 5, 20, angle: -0.18), with: .color(pal.innerEar))
+            shape(ellipse(84, 6 - bob, 10, 28, angle: tilt), pal.ear)
+            g.fill(ellipse(84, 7 - bob, 5, 20, angle: tilt), with: .color(pal.innerEar))
+        case .dog, .bee:
             break
         }
 
@@ -445,64 +588,6 @@ struct CritterView: View {
             shape(ellipse(92, hy + 2, 11, 21, angle: -0.35 - flap), pal.ear)
         }
 
-        // Face.
-        let eyes = [CGPoint(x: hx - 6.5, y: hy - 1), CGPoint(x: hx + 6.5, y: hy - 1)]
-        if species == .panda {
-            g.fill(ellipse(eyes[0].x - 0.5, eyes[0].y + 0.5, 9, 11.5, angle: 0.45), with: .color(Color(white: 0.16)))
-            g.fill(ellipse(eyes[1].x + 0.5, eyes[1].y + 0.5, 9, 11.5, angle: -0.45), with: .color(Color(white: 0.16)))
-        }
-        for e in eyes {
-            if blink {
-                var lid = Path()
-                lid.move(to: CGPoint(x: e.x - 2.2, y: e.y))
-                lid.addQuadCurve(to: CGPoint(x: e.x + 2.2, y: e.y), control: CGPoint(x: e.x, y: e.y + 1.6))
-                g.stroke(lid, with: .color(species == .panda ? .white : outline), style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
-            } else if happy {
-                var smile = Path() // ^ ^ eyes
-                smile.move(to: CGPoint(x: e.x - 2.4, y: e.y + 1))
-                smile.addQuadCurve(to: CGPoint(x: e.x + 2.4, y: e.y + 1), control: CGPoint(x: e.x, y: e.y - 2.6))
-                g.stroke(smile, with: .color(species == .panda ? .white : outline), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
-            } else {
-                g.fill(ellipse(e.x, e.y, 4, 5), with: .color(species == .panda ? .white : Color(white: 0.12)))
-                if species == .panda { g.fill(ellipse(e.x, e.y + 0.3, 2.4, 3), with: .color(Color(white: 0.12))) }
-                g.fill(ellipse(e.x + 0.8, e.y - 1, 1.3, 1.3), with: .color(.white))
-            }
-        }
-        // Blush.
-        for x in [hx - 10.5, hx + 10.5] {
-            g.fill(ellipse(x, hy + 5, 5, 3), with: .color(Color(red: 1, green: 0.55, blue: 0.6).opacity(0.55)))
-        }
-        // Nose and mouth.
-        let ny = hy + 4.5
-        switch species {
-        case .cat:
-            var nose = Path()
-            nose.move(to: CGPoint(x: hx - 1.8, y: ny - 1))
-            nose.addLine(to: CGPoint(x: hx + 1.8, y: ny - 1))
-            nose.addLine(to: CGPoint(x: hx, y: ny + 1))
-            nose.closeSubpath()
-            g.fill(nose, with: .color(Color(red: 1, green: 0.5, blue: 0.58)))
-        default:
-            g.fill(ellipse(hx, ny, species == .dog ? 5 : 4, species == .dog ? 3.4 : 2.8), with: .color(Color(white: 0.14)))
-        }
-        if species == .dog && happy {
-            g.fill(Path(roundedRect: CGRect(x: hx - 2, y: ny + 2.5, width: 4, height: 5), cornerRadius: 2),
-                   with: .color(Color(red: 1, green: 0.45, blue: 0.5)))
-        }
-        var mouth = Path()
-        mouth.move(to: CGPoint(x: hx - 3, y: ny + 2))
-        mouth.addQuadCurve(to: CGPoint(x: hx, y: ny + 2.2), control: CGPoint(x: hx - 1.5, y: ny + 4))
-        mouth.addQuadCurve(to: CGPoint(x: hx + 3, y: ny + 2), control: CGPoint(x: hx + 1.5, y: ny + 4))
-        g.stroke(mouth, with: .color(outline), style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
-
-        if species == .cat { // whiskers
-            for (from, to) in [((hx - 12, ny), (hx - 21, ny - 2)), ((hx - 12, ny + 2), (hx - 21, ny + 3.5)),
-                               ((hx + 12, ny), (hx + 21, ny - 2)), ((hx + 12, ny + 2), (hx + 21, ny + 3.5))] {
-                var w = Path()
-                w.move(to: CGPoint(x: from.0, y: from.1))
-                w.addLine(to: CGPoint(x: to.0, y: to.1))
-                g.stroke(w, with: .color(outline.opacity(0.7)), style: StrokeStyle(lineWidth: 0.9, lineCap: .round))
-            }
-        }
+        face(hx: hx, hy: hy)
     }
 }
