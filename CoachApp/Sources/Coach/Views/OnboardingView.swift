@@ -33,19 +33,18 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack(spacing: 22) {
-            Image(systemName: "brain.head.profile")
+            Text("🌱")
                 .font(.system(size: 64))
-                .foregroundStyle(.tint)
             VStack(spacing: 8) {
-                Text("Welcome to Coach").font(.largeTitle.bold())
-                Text("Your revision coach for an Obsidian vault.")
+                Text("Welcome to your garden").font(.largeTitle.bold())
+                Text("Plant what you learn. Water it with revision. Watch it grow.")
                     .font(.title3).foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 12) {
-                point("folder", "Everything lives in a **Coach/** folder in your vault. Subfolders are your subjects, topics and subtopics.")
-                point("gauge.with.dots.needle.33percent", "Rate each **file** 1–5. Low means shaky or too important to forget, so it comes back sooner. Folders show the averages.")
-                point("calendar.badge.clock", "Coach records when you added and last revised each file, and schedules the next review.")
-                point("menubar.rectangle", "See what's due from the menu bar, and get a daily reminder.")
+                point("square.grid.3x3", "Your garden is a **Coach/** folder in your vault. Subfolders are garden beds: subjects, topics and subtopics.")
+                point("leaf", "Each **file** is a plant. Rate it 1–5, from 🌰 Seed to 🌳 Tree. Young plants need water sooner. Beds show the average growth.")
+                point("drop", "Coach remembers when you planted and last watered each file, and tells you when it gets thirsty.")
+                point("menubar.rectangle", "See what's thirsty from the menu bar, and get a reminder every morning.")
             }
             .frame(maxWidth: 460)
             Button {
@@ -58,6 +57,7 @@ struct OnboardingView: View {
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Garden.card)
     }
 
     private func point(_ icon: String, _ text: LocalizedStringKey) -> some View {
@@ -121,10 +121,10 @@ struct SettingsView: View {
             }
             Section {
                 Stepper(value: $store.dailyGoal, in: 0...50) {
-                    LabeledContent("Daily goal", value: store.dailyGoal == 0 ? "Off" : "\(store.dailyGoal) file\(store.dailyGoal == 1 ? "" : "s") a day")
+                    LabeledContent("Daily watering round", value: store.dailyGoal == 0 ? "Off" : "\(Garden.plants(store.dailyGoal)) a day")
                 }
             } header: {
-                Text("Revising")
+                Text("Watering")
             } footer: {
                 Text(store.dailyGoal == 0
                      ? "Today shows only files that are due, so some days may have nothing."
@@ -168,10 +168,10 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section {
-                Toggle("Morning reminder of files due today", isOn: $reminderEnabled)
+                Toggle("Morning reminder of thirsty plants", isOn: $reminderEnabled)
                 DatePicker("Time", selection: time($reminderMinutes), displayedComponents: .hourAndMinute)
                     .disabled(!reminderEnabled)
-                Toggle("Evening catch-up if files are still due", isOn: $eveningEnabled)
+                Toggle("Evening catch-up if plants are still thirsty", isOn: $eveningEnabled)
                 DatePicker("Time", selection: time($eveningMinutes), displayedComponents: .hourAndMinute)
                     .disabled(!eveningEnabled)
                 HStack {

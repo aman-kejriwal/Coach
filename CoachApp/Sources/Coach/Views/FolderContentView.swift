@@ -22,7 +22,7 @@ struct FolderContentView: View {
 
                 if search.isEmpty {
                     if !node.children.isEmpty {
-                        Section("Folders") {
+                        Section("Beds") {
                             ForEach(node.children) { child in
                                 Button { sidebar = .folder(child.path) } label: {
                                     SubfolderRow(node: child, now: store.now)
@@ -32,9 +32,9 @@ struct FolderContentView: View {
                             }
                         }
                     }
-                    Section(node.files.isEmpty ? "Files" : "Files (\(node.files.count))") {
+                    Section(node.files.isEmpty ? "Plants" : "Plants (\(node.files.count))") {
                         if node.files.isEmpty {
-                            Text(node.children.isEmpty ? "No files yet. Use “Add Files”." : "No files directly in this folder.")
+                            Text(node.children.isEmpty ? "Nothing planted yet. Use “Plant Files”." : "No plants directly in this bed.")
                                 .foregroundStyle(.secondary)
                                 .selectionDisabled()
                         }
@@ -44,7 +44,7 @@ struct FolderContentView: View {
                     }
                 } else {
                     // Searching: every matching file anywhere in this folder.
-                    Section("Matching files") {
+                    Section("Matching plants") {
                         ForEach(node.allFiles.filter { matches($0, search) }.sorted(by: Topic.urgency)) { topic in
                             TopicRow(topic: topic, now: store.now, showFolder: true).tag(topic.id)
                         }
@@ -52,9 +52,9 @@ struct FolderContentView: View {
                 }
 
                 if !node.untracked.isEmpty {
-                    Section("Not tracked yet (\(node.untracked.count))") {
+                    Section("Seeds not planted yet (\(node.untracked.count))") {
                         ForEach(node.untracked, id: \.self) { url in
-                            Label(url.deletingPathExtension().lastPathComponent, systemImage: "doc.badge.plus")
+                            Label(url.deletingPathExtension().lastPathComponent, systemImage: "circle.dotted")
                                 .foregroundStyle(.secondary)
                                 .tag(ListSelection.untracked(url))
                         }
@@ -67,7 +67,7 @@ struct FolderContentView: View {
                 if let id = ids.first, store.topic(id: id) != nil { openWindow.revise(id) }
             }
         } else {
-            ContentUnavailableView("Folder not found", systemImage: "folder.badge.questionmark")
+            ContentUnavailableView("Bed not found", systemImage: "leaf")
         }
     }
 }
@@ -79,10 +79,10 @@ struct SubfolderRow: View {
     var body: some View {
         let s = node.stats(now: now)
         HStack {
-            Image(systemName: "folder.fill").foregroundStyle(.tint)
+            Image(systemName: "leaf.fill").foregroundStyle(Garden.leaf)
             VStack(alignment: .leading, spacing: 2) {
                 Text(node.name).font(.headline)
-                Text("\(s.fileCount) file\(s.fileCount == 1 ? "" : "s")\(s.dueCount > 0 ? " · \(s.dueCount) due" : "")")
+                Text("\(Garden.plants(s.fileCount))\(s.dueCount > 0 ? " · \(s.dueCount) thirsty" : "")")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
@@ -98,12 +98,12 @@ struct AverageBadge: View {
     let value: Double
     var body: some View {
         HStack(spacing: 4) {
-            Circle().fill(Confidence.color(Int(value.rounded()))).frame(width: 8, height: 8)
+            Text(Garden.stageEmoji(Int(value.rounded()))).font(.caption)
             Text(String(format: "%.1f", value)).font(.caption.weight(.medium)).monospacedDigit()
         }
         .padding(.horizontal, 7).padding(.vertical, 3)
         .background(Confidence.color(Int(value.rounded())).opacity(0.15), in: Capsule())
-        .help("Average confidence of the files inside")
+        .help("Average growth of the plants in this bed")
     }
 }
 
@@ -137,22 +137,22 @@ struct FolderStatsCard: View {
                 Button {
                     if let first = due.first { openWindow.revise(first.id, scope: node.path) }
                 } label: {
-                    Label(due.isEmpty ? "Nothing due" : "Revise \(due.count) due", systemImage: "play.fill")
+                    Label(due.isEmpty ? "Nothing thirsty" : "Water \(due.count) thirsty", systemImage: "drop.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(due.isEmpty)
-                .help("Go through this folder's due files one by one, most urgent first")
+                .help("Water this bed's thirsty plants one by one, most urgent first")
                 Button { store.presentedSheet = .addTopic(folder: node.path) } label: {
-                    Label("Add Files", systemImage: "doc.badge.plus")
+                    Label("Plant Files", systemImage: "plus")
                 }
                 Button { store.presentedSheet = .newFolder(parent: node.path) } label: {
-                    Label("New Subfolder", systemImage: "folder.badge.plus")
+                    Label("New Bed", systemImage: "square.grid.3x3")
                 }
             }
             .controlSize(.small)
 
             if stats.fileCount == 0 {
-                Text("No rated files here yet. Folder statistics come from the files inside.")
+                Text("Nothing growing here yet. A bed's health comes from the plants inside.")
                     .font(.callout).foregroundStyle(.secondary)
             } else {
                 HStack(alignment: .top, spacing: 22) {
@@ -160,11 +160,11 @@ struct FolderStatsCard: View {
                         Text(String(format: "%.1f", stats.averageConfidence ?? 0))
                             .font(.system(size: 34, weight: .bold).monospacedDigit())
                             .foregroundStyle(Confidence.color(Int((stats.averageConfidence ?? 3).rounded())))
-                        Text("avg confidence").font(.caption).foregroundStyle(.secondary)
+                        Text("avg growth").font(.caption).foregroundStyle(.secondary)
                     }
                     Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
-                        GridRow { metric("\(stats.fileCount)", "files"); metric("\(stats.dueCount)", "due", stats.dueCount > 0 ? .orange : nil) }
-                        GridRow { metric("\(stats.overdueCount)", "overdue", stats.overdueCount > 0 ? .red : nil); metric("\(stats.neverRevisedCount)", "never revised") }
+                        GridRow { metric("\(stats.fileCount)", "plants"); metric("\(stats.dueCount)", "thirsty", stats.dueCount > 0 ? Garden.sun : nil) }
+                        GridRow { metric("\(stats.overdueCount)", "wilting", stats.overdueCount > 0 ? Garden.terracotta : nil); metric("\(stats.neverRevisedCount)", "never watered") }
                     }
                 }
 
@@ -172,21 +172,21 @@ struct FolderStatsCard: View {
 
                 HStack(spacing: 16) {
                     if let last = stats.lastRevised {
-                        Label("Last revised \(last.formatted(.relative(presentation: .named)))", systemImage: "clock")
+                        Label("Last watered \(last.formatted(.relative(presentation: .named)))", systemImage: "drop")
                     }
                     if let cov = stats.coverage, stats.untrackedCount > 0 {
-                        Label("\(Int((cov * 100).rounded()))% tracked (\(stats.untrackedCount) not yet)", systemImage: "chart.pie")
+                        Label("\(Int((cov * 100).rounded()))% planted (\(stats.untrackedCount) seeds left)", systemImage: "chart.pie")
                     }
                 }
                 .font(.caption).foregroundStyle(.secondary)
 
                 if !stats.weakest.isEmpty, stats.weakest.first!.confidence <= 3 {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Weakest files").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Text("Needs the most care").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         ForEach(stats.weakest.filter { $0.confidence <= 3 }) { t in
                             Button { openWindow.revise(t.id) } label: {
                                 HStack(spacing: 6) {
-                                    Circle().fill(Confidence.color(t.confidence)).frame(width: 7, height: 7)
+                                    Text(Garden.stageEmoji(t.confidence))
                                     Text(t.title).lineLimit(1)
                                     if t.folder != node.path {
                                         Text(t.folder.dropFirst(node.path.count).joined(separator: " › "))
@@ -199,7 +199,7 @@ struct FolderStatsCard: View {
                             }
                             .buttonStyle(.plain)
                             .font(.callout)
-                            .help("Open the revision page")
+                            .help("Water this plant")
                         }
                     }
                 }
@@ -207,7 +207,7 @@ struct FolderStatsCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+        .gardenCard()
     }
 
     private func metric(_ value: String, _ label: String, _ color: Color? = nil) -> some View {
@@ -241,14 +241,13 @@ struct DistributionBar: View {
             HStack(spacing: 10) {
                 ForEach(0..<5, id: \.self) { i in
                     HStack(spacing: 3) {
-                        Circle().fill(Confidence.color(i + 1)).frame(width: 6, height: 6)
-                        Text("\(i + 1): \(distribution[i])").monospacedDigit()
+                        Text("\(Garden.stageEmoji(i + 1)) \(distribution[i])").monospacedDigit()
                     }
                 }
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
         }
-        .help("Number of files at each confidence level")
+        .help("How many plants are at each growth stage: Seed, Sprout, Sapling, Bloom, Tree")
     }
 }

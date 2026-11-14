@@ -36,7 +36,7 @@ struct TopicDetailView: View {
                         MarkdownView(markdown: text, noteURL: topic.url)
                             .padding(14)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+                            .gardenCard(radius: 8)
                     }
                 }
             }
@@ -47,8 +47,8 @@ struct TopicDetailView: View {
             note = store.noteBody(for: topic.url)
             rating = topic.confidence
         }
-        .confirmationDialog("Stop tracking “\(topic.title)”?", isPresented: $confirmUntrack) {
-            Button("Stop Tracking", role: .destructive) { store.untrack(topic) }
+        .confirmationDialog("Uproot “\(topic.title)”?", isPresented: $confirmUntrack) {
+            Button("Uproot (Stop Tracking)", role: .destructive) { store.untrack(topic) }
         } message: {
             Text("The note stays in your vault. Only Coach's properties are removed.")
         }
@@ -59,13 +59,13 @@ struct TopicDetailView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(topic.title).font(.largeTitle.bold()).textSelection(.enabled)
                 HStack(spacing: 8) {
-                    Label(topic.folderDisplay, systemImage: "folder").foregroundStyle(.secondary)
+                    Label(topic.folderDisplay, systemImage: "leaf").foregroundStyle(.secondary)
                     ConfidenceBadge(confidence: topic.confidence)
                 }
             }
             Spacer()
             HStack {
-                Button { openWindow.revise(topic.id) } label: { Label("Revise Now", systemImage: "rectangle.portrait.and.arrow.forward") }
+                Button { openWindow.revise(topic.id) } label: { Label("Water Now", systemImage: "drop.fill") }
                     .buttonStyle(.borderedProminent)
                     .help("Open a dedicated revision page for this topic (⌘O, or double-click it in the list)")
                 Button(action: editNote) { Label("Edit Note", systemImage: "square.and.pencil") }
@@ -86,22 +86,22 @@ struct TopicDetailView: View {
     private var facts: some View {
         Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 8) {
             GridRow {
-                fact("Added", topic.created.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "—")
-                fact("Last revised", topic.lastReviewed.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "Never")
-                fact("Next review", topic.nextReview.formatted(date: .abbreviated, time: .omitted))
+                fact("Planted", topic.created.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "—")
+                fact("Last watered", topic.lastReviewed.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "Never")
+                fact("Next watering", topic.nextReview.formatted(date: .abbreviated, time: .omitted))
             }
             GridRow {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Status").font(.caption).foregroundStyle(.secondary)
                     DueLabel(topic: topic, now: store.now)
                 }
-                fact("Reviews", "\(topic.reviewCount)")
-                fact("Streak", topic.streak > 0 ? "\(topic.streak) in a row" : "—")
+                fact("Waterings", "\(topic.reviewCount)")
+                fact("Growth streak", topic.streak > 0 ? "\(topic.streak) in a row 🌿" : "—")
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
+        .gardenCard(radius: 10)
     }
 
     private func fact(_ title: String, _ value: String) -> some View {
@@ -113,17 +113,17 @@ struct TopicDetailView: View {
 
     private var reviewBox: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Revised it just now? How confident are you?").font(.headline)
+            Text("Watered it just now? How well is it growing?").font(.headline)
             ConfidencePicker(selection: $rating)
             HStack {
-                Button("Log Review") { store.review(topic, confidence: rating) }
+                Button("Log Watering") { store.review(topic, confidence: rating) }
                     .buttonStyle(.borderedProminent)
-                Text("Next review \(Scheduler.afterReview(of: topic, confidence: rating).nextReview.formatted(.relative(presentation: .named)))")
+                Text("Next watering \(Scheduler.afterReview(of: topic, confidence: rating).nextReview.formatted(.relative(presentation: .named)))")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Only Change Confidence") { store.setConfidence(topic, to: rating) }
+                Button("Only Change Stage") { store.setConfidence(topic, to: rating) }
                     .disabled(rating == topic.confidence)
-                    .help("Update confidence (or importance) without logging a revision")
+                    .help("Change the growth stage (confidence or importance) without logging a watering")
             }
         }
     }

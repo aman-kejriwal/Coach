@@ -49,7 +49,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         guard isAvailable else { return }
         let center = UNUserNotificationCenter.current()
         center.delegate = self
-        let start = UNNotificationAction(identifier: Self.startAction, title: "Start Review", options: [.foreground])
+        let start = UNNotificationAction(identifier: Self.startAction, title: "Start Watering", options: [.foreground])
         let snooze = UNNotificationAction(identifier: Self.snoozeAction, title: "Remind Me in 1 Hour", options: [])
         center.setNotificationCategories([
             UNNotificationCategory(identifier: Self.category, actions: [start, snooze], intentIdentifiers: [], options: []),
@@ -124,8 +124,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let content: UNMutableNotificationContent
         if plan.today.isEmpty {
             content = UNMutableNotificationContent()
-            content.title = "Nothing to revise right now"
-            content.body = "You're caught up. This is how Coach's reminders will look."
+            content.title = "Nothing is thirsty right now 🌤️"
+            content.body = "Your garden is watered. This is how Coach's reminders will look."
             content.sound = .default
         } else {
             content = Self.content(plan, style: .morning)
@@ -161,25 +161,25 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     private static func content(_ plan: DailyPlan, style: Style) -> UNMutableNotificationContent {
         let list = plan.today
         let n = list.count
-        let files = n == 1 ? "1 file" : "\(n) files"
+        let files = Garden.plants(n)
         let content = UNMutableNotificationContent()
         switch style {
-        case .morning: content.title = "\(files) to revise today"
-        case .evening: content.title = "Still \(files) to go today"
-        case .snoozed: content.title = "Reminder: \(files) to revise"
+        case .morning: content.title = "🌱 \(files) to water today"
+        case .evening: content.title = "💧 \(files) still thirsty today"
+        case .snoozed: content.title = "🌿 Reminder: \(files) to water"
         }
 
         let critical = list.filter { $0.confidence <= 2 }.count
         content.subtitle = [
-            plan.due.isEmpty ? nil : "\(plan.due.count) due",
-            plan.ahead.isEmpty ? nil : "\(plan.ahead.count) to get ahead",
-            critical > 0 ? "\(critical) critical" : nil,
-            plan.moreDue.isEmpty ? nil : "+\(plan.moreDue.count) more due",
+            plan.due.isEmpty ? nil : "\(plan.due.count) thirsty",
+            plan.ahead.isEmpty ? nil : "\(plan.ahead.count) to water early",
+            critical > 0 ? "\(critical) seeds & sprouts" : nil,
+            plan.moreDue.isEmpty ? nil : "+\(plan.moreDue.count) more thirsty",
         ].compactMap { $0 }.joined(separator: " · ")
 
         let names = list.prefix(3).map(\.title).joined(separator: ", ")
         var body = n > 3 ? "\(names) and \(n - 3) more" : names
-        if style == .evening { body += ". A few minutes now keeps the habit going." }
+        if style == .evening { body += ". A few minutes now keeps the garden growing." }
         content.body = body
         content.sound = .default
         content.categoryIdentifier = category

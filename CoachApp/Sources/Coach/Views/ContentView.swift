@@ -34,6 +34,7 @@ struct ContentView: View {
             Notifier.shared.attach(store: store, openWindow: openWindow)
             StudyBuddy.shared.attach(store: store, openWindow: openWindow)
         }
+        .tint(Garden.leaf)
         .alert("Something went wrong", isPresented: Binding(
             get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } }
         )) {
@@ -54,20 +55,20 @@ struct MainView: View {
         let tree = store.tree
         NavigationSplitView {
             List(selection: $sidebar) {
-                Section("Revise") {
-                    row("Today", "checklist", .due, count: store.todayCount)
-                    row("Next 7 Days", "calendar", .upcoming,
+                Section("Watering") {
+                    row("Today", "drop", .due, count: store.todayCount)
+                    row("Next 7 Days", "sun.max", .upcoming,
                         count: store.topics.filter { (1...7).contains($0.daysUntilDue(now: store.now)) }.count)
-                    row("Critical (1–2)", "exclamationmark.triangle", .critical,
+                    row("Seeds & Sprouts (1–2)", "leaf", .critical,
                         count: store.topics.filter { $0.confidence <= 2 }.count)
                 }
-                Section("Library") {
+                Section("Garden") {
                     OutlineGroup([tree], children: \.childrenOrNil) { node in
                         FolderSidebarRow(node: node, now: store.now)
                             .tag(SidebarItem.folder(node.path))
                             .contextMenu {
-                                Button("Add Files…") { store.presentedSheet = .addTopic(folder: node.path) }
-                                Button("New Subfolder…") { store.presentedSheet = .newFolder(parent: node.path) }
+                                Button("Plant Files…") { store.presentedSheet = .addTopic(folder: node.path) }
+                                Button("New Bed…") { store.presentedSheet = .newFolder(parent: node.path) }
                                 if let url = store.folderURL(node.path) {
                                     Button("Reveal in Finder") { store.revealInFinder(url) }
                                 }
@@ -96,36 +97,36 @@ struct MainView: View {
                 TopicDetailView(topic: topic)
                     .id(topic.id) // fresh state (note, rating) for every file
             } else {
-                ContentUnavailableView("No file selected", systemImage: "brain.head.profile",
+                ContentUnavailableView("Pick a plant", systemImage: "leaf",
                                        description: Text(store.todayCount > 0
-                                                         ? "\(store.todayCount) file\(store.todayCount == 1 ? "" : "s") to revise today. Press ⌘R to start."
-                                                         : store.topics.isEmpty ? "Add files to revise with ⌘N." : "You're done for today."))
+                                                         ? "\(Garden.plants(store.todayCount)) to water today. Press ⌘R to start."
+                                                         : store.topics.isEmpty ? "Plant your first file with ⌘N." : "The garden is watered for today. 🌤️"))
             }
         }
         // The selection is shared by every list: when you switch lists, keep it only if that file is shown there.
         .onChange(of: sidebar) { _, new in
             if !isShown(store.selectedTopicID, in: new ?? .due) { store.selectedTopicID = nil }
         }
-        .searchable(text: $search, placement: .sidebar, prompt: "Search files")
+        .searchable(text: $search, placement: .sidebar, prompt: "Search the garden")
         .navigationTitle("Coach")
         .toolbar {
             ToolbarItemGroup {
                 if store.isScanning { ProgressView().controlSize(.small) }
                 Button { store.presentedSheet = .review } label: {
-                    Label("Review \(store.reviewQueue.count)", systemImage: "play.fill")
+                    Label("Water \(store.reviewQueue.count)", systemImage: "drop.fill")
                 }
-                .help("Review today's files (⌘R)")
+                .help("Water today's plants (⌘R)")
                 .disabled(store.reviewQueue.isEmpty)
 
                 Button { store.presentedSheet = .newFolder(parent: currentFolder) } label: {
-                    Label("New Folder", systemImage: "folder.badge.plus")
+                    Label("New Bed", systemImage: "square.grid.3x3")
                 }
-                .help("Create a folder (subject, topic or subtopic)")
+                .help("Create a garden bed: a folder for a subject, topic or subtopic")
 
                 Button { store.presentedSheet = .addTopic(folder: nil) } label: {
-                    Label("New File", systemImage: "plus")
+                    Label("Plant", systemImage: "plus")
                 }
-                .help("Add files to revise (⌘N)")
+                .help("Plant new files to revise (⌘N)")
             }
         }
         .sheet(item: $store.presentedSheet) { sheet in
@@ -171,21 +172,21 @@ struct FolderSidebarRow: View {
     var body: some View {
         let stats = node.stats(now: now)
         HStack(spacing: 6) {
-            Label(node.name, systemImage: node.isRoot ? "books.vertical" : "folder")
+            Label(node.name, systemImage: node.isRoot ? "tree" : "leaf")
                 .lineLimit(1)
             Spacer(minLength: 4)
             if let avg = stats.averageConfidence {
                 Text(String(format: "%.1f", avg))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(Confidence.color(Int(avg.rounded())))
-                    .help("Average confidence of the \(stats.fileCount) files inside")
+                    .help("Average growth of the \(Garden.plants(stats.fileCount)) in this bed")
             }
             if stats.dueCount > 0 {
                 Text("\(stats.dueCount)")
                     .font(.caption2.bold().monospacedDigit())
                     .padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(Color.orange.opacity(0.25), in: Capsule())
-                    .help("\(stats.dueCount) due")
+                    .background(Garden.sun.opacity(0.25), in: Capsule())
+                    .help("\(stats.dueCount) thirsty")
             }
         }
     }
@@ -207,25 +208,25 @@ struct TodayListView: View {
             if plan.goal > 0 { progress(plan) }
             if due.isEmpty && ahead.isEmpty && more.isEmpty {
                 ContentUnavailableView {
-                    Label(plan.isGoalMet ? "Today's goal is done" : store.topics.isEmpty ? "No files yet" : "Nothing to revise",
-                          systemImage: plan.isGoalMet ? "checkmark.seal" : "tray")
+                    Label(plan.isGoalMet ? "The garden is watered" : store.topics.isEmpty ? "An empty garden" : "Nothing is thirsty",
+                          systemImage: plan.isGoalMet ? "drop.fill" : "leaf")
                 } description: {
                     Text(plan.isGoalMet
-                         ? "You revised \(plan.doneToday) file\(plan.doneToday == 1 ? "" : "s") today."
-                         : store.topics.isEmpty ? "Add files with the + button." : "Nothing is due. Set a daily goal in Settings to always get a few files.")
+                         ? "You watered \(Garden.plants(plan.doneToday)) today. 🌻"
+                         : store.topics.isEmpty ? "Plant files with the + button." : "No plant needs water. Set a daily goal in Settings to always tend a few.")
                 } actions: {
                     if plan.isGoalMet, let next = nextInLine {
-                        Button("Revise One More: \(next.title)") { openWindow.revise(next.id) }
+                        Button("Water One More: \(next.title)") { openWindow.revise(next.id) }
                     }
                 }
                 .frame(maxHeight: .infinity)
             } else {
                 List(selection: $store.selectedTopicID) {
-                    section("Due", due, footer: nil)
-                    section("Getting ahead", ahead,
-                            footer: "Not due yet, but next in line. Revising early counts, just a little less.")
-                    section(plan.goal > 0 ? "Also due · beyond today's goal" : "Due", more,
-                            footer: "Still due. Do them if you have time, or they'll lead tomorrow's list.")
+                    section("Thirsty", due, footer: nil)
+                    section("Water early", ahead,
+                            footer: "Not thirsty yet, but next in line. Early watering counts, just a little less.")
+                    section(plan.goal > 0 ? "Also thirsty · beyond today's round" : "Thirsty", more,
+                            footer: "Still thirsty. Water them if you have time, or they'll lead tomorrow's round.")
                 }
                 .contextMenu(forSelectionType: String.self) { ids in
                     if let id = ids.first, let topic = store.topic(id: id) { TopicMenu(topic: topic) }
@@ -262,15 +263,15 @@ struct TodayListView: View {
     private func progress(_ plan: DailyPlan) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("\(min(plan.doneToday, plan.goal)) of \(plan.goal) done today").font(.callout.weight(.semibold))
+                Text("💧 \(min(plan.doneToday, plan.goal)) of \(plan.goal) watered today").font(.callout.weight(.semibold))
                 Spacer()
-                if plan.isGoalMet { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                if plan.isGoalMet { Text("🌻") }
             }
             ProgressView(value: Double(min(plan.doneToday, plan.goal)), total: Double(plan.goal))
-                .tint(plan.isGoalMet ? .green : .accentColor)
+                .tint(plan.isGoalMet ? Garden.forest : Garden.water)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
-        .help("Daily goal: \(plan.goal) files. Change it in Settings.")
+        .help("Daily watering round: \(Garden.plants(plan.goal)). Change it in Settings.")
     }
 }
 
@@ -299,9 +300,9 @@ struct TopicListView: View {
         let topics = self.topics
         if topics.isEmpty {
             ContentUnavailableView {
-                Label(filter == .due ? "Nothing due" : "No files", systemImage: filter == .due ? "checkmark.seal" : "tray")
+                Label(filter == .due ? "Nothing is thirsty" : "No plants here", systemImage: "leaf")
             } description: {
-                Text(filter == .due ? "Nice work, you're caught up for today." : "Add files with the + button.")
+                Text(filter == .due ? "Nice work, the garden is watered for today." : "Plant files with the + button.")
             }
         } else {
             List(topics, selection: $store.selectedTopicID) { topic in
@@ -328,7 +329,7 @@ struct TopicRow: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Image(systemName: "doc.text").foregroundStyle(.secondary)
+            Text(Garden.stageEmoji(topic.confidence))
             VStack(alignment: .leading, spacing: 3) {
                 Text(topic.title).font(.headline).lineLimit(1)
                 HStack(spacing: 6) {
@@ -355,12 +356,12 @@ struct TopicMenu: View {
     let topic: Topic
 
     var body: some View {
-        Button("Revise Now") { openWindow.revise(topic.id) }
+        Button("Water Now") { openWindow.revise(topic.id) }
         Button("Edit Note…") { openWindow.editNote(topic.id) }
         Divider()
-        Menu("Mark Reviewed") {
+        Menu("Mark Watered") {
             ForEach(Array(Confidence.range), id: \.self) { c in
-                Button("\(c) · \(Confidence.label(c))") { store.review(topic, confidence: c) }
+                Button("\(Garden.stageEmoji(c)) \(c) · \(Garden.stageName(c))") { store.review(topic, confidence: c) }
             }
         }
         Menu("Postpone") {
@@ -372,6 +373,6 @@ struct TopicMenu: View {
         Button("Open in Obsidian") { store.openInObsidian(topic.url) }
         Button("Reveal in Finder") { store.revealInFinder(topic.url) }
         Divider()
-        Button("Stop Tracking", role: .destructive) { store.untrack(topic) }
+        Button("Uproot (Stop Tracking)", role: .destructive) { store.untrack(topic) }
     }
 }

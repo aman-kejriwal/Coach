@@ -1,27 +1,22 @@
 import CoachCore
 import SwiftUI
 
-extension Confidence {
-    static func color(_ c: Int) -> Color {
-        [Color.red, .orange, .yellow, .mint, .green][clamp(c) - 1]
-    }
-}
-
 struct ConfidenceBadge: View {
     let confidence: Int
     var showLabel = true
 
     var body: some View {
         HStack(spacing: 4) {
-            Circle().fill(Confidence.color(confidence)).frame(width: 8, height: 8)
-            Text(showLabel ? "\(confidence) · \(Confidence.label(confidence))" : "\(confidence)")
+            Text(Garden.stageEmoji(confidence)).font(.caption)
+            Text(showLabel ? Garden.stageName(confidence) : "\(confidence)")
                 .font(.caption.weight(.medium))
                 .monospacedDigit()
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 3)
         .background(Confidence.color(confidence).opacity(0.15), in: Capsule())
-        .help(Confidence.detail(confidence))
+        .foregroundStyle(Garden.stageColor(confidence))
+        .help("\(confidence) · \(Garden.stageName(confidence)): \(Garden.stageDetail(confidence))")
     }
 }
 
@@ -38,7 +33,7 @@ struct ConfidencePicker: View {
                 }
             }
             if !compact {
-                Text(Confidence.detail(selection))
+                Text(Garden.stageDetail(selection))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -56,8 +51,8 @@ struct ConfidenceButton: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 2) {
-                Text("\(confidence)").font(compact ? .callout.bold() : .title3.bold()).monospacedDigit()
-                if !compact { Text(Confidence.label(confidence)).font(.caption2) }
+                Text(Garden.stageEmoji(confidence)).font(compact ? .callout : .title2)
+                if !compact { Text("\(confidence) · \(Garden.stageName(confidence))").font(.caption2) }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, compact ? 3 : 7)
@@ -66,7 +61,7 @@ struct ConfidenceButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("\(confidence) · \(Confidence.label(confidence)): \(Confidence.detail(confidence))")
+        .help("\(confidence) · \(Garden.stageName(confidence)): \(Garden.stageDetail(confidence))")
         .modifier(OptionalShortcut(key: shortcut ? Character("\(confidence)") : nil))
     }
 }
@@ -83,9 +78,8 @@ struct DueLabel: View {
     let now: Date
 
     var body: some View {
-        let d = topic.daysUntilDue(now: now)
-        Text(topic.dueDescription(now: now))
-            .foregroundStyle(d < 0 ? Color.red : d == 0 ? Color.orange : Color.secondary)
+        Text(Garden.dueText(topic, now: now))
+            .foregroundStyle(Garden.dueColor(topic, now: now))
     }
 }
 
@@ -95,9 +89,9 @@ struct LastRevisedField: View {
     @Binding var date: Date
 
     var body: some View {
-        Toggle("I've revised this before", isOn: $hasRevised)
+        Toggle("I've watered this before", isOn: $hasRevised)
         if hasRevised {
-            DatePicker("Last revised", selection: $date, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+            DatePicker("Last watered", selection: $date, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
         }
     }
 }
@@ -112,7 +106,7 @@ struct NotePreview: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
         }
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+        .gardenCard(radius: 8)
     }
 
     static func render(_ md: String) -> AttributedString {
@@ -127,15 +121,15 @@ struct EmptyNotePrompt: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: "doc.text.magnifyingglass").font(.title).foregroundStyle(.secondary)
-            Text("No notes yet").font(.headline)
-            Text("Write what you need to revise (key points, steps, examples, mistakes) so it's here next time.")
+            Text("🌱").font(.largeTitle)
+            Text("Nothing planted here yet").font(.headline)
+            Text("Write what you need to revise (key points, steps, examples, mistakes) so it can grow here next time.")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Button(action: action) { Label("Write Notes", systemImage: "square.and.pencil") }
                 .buttonStyle(.borderedProminent)
         }
         .padding(20)
         .frame(maxWidth: .infinity)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+        .gardenCard(radius: 8)
     }
 }

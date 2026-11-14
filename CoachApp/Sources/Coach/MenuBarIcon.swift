@@ -1,6 +1,6 @@
 import AppKit
 
-/// The menu bar icon: the app icon's "revise again" circular arrow around a brain, as a template
+/// The menu bar icon: a sprout (the Garden theme), as a template
 /// image (macOS tints it for light/dark menu bars and highlights). The due count is drawn into the
 /// same image so the label is always a single, reliably rendered image.
 enum MenuBarIcon {
@@ -25,43 +25,36 @@ enum MenuBarIcon {
         return image
     }
 
+    /// A sprout: a curved stem with two leaves, growing from a little mound of soil.
     static func drawGlyph(in rect: CGRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        let radius = rect.width / 2 - 1.6
-        let rad = { (d: CGFloat) in d * .pi / 180 }
-        let gapStart: CGFloat = 58, gapEnd: CGFloat = 122
+        let w = rect.width, h = rect.height
+        let p = { (x: CGFloat, y: CGFloat) in CGPoint(x: rect.minX + x * w, y: rect.minY + y * h) }
 
         ctx.setStrokeColor(NSColor.black.cgColor)
         ctx.setFillColor(NSColor.black.cgColor)
-
-        // Ring: from the top-left round to just before the arrow head at the top-right.
-        ctx.setLineWidth(1.7)
         ctx.setLineCap(.round)
-        ctx.addArc(center: center, radius: radius, startAngle: rad(gapEnd), endAngle: rad(gapStart + 360 - 14), clockwise: false)
+
+        // Soil mound.
+        ctx.setLineWidth(1.7)
+        ctx.move(to: p(0.14, 0.10))
+        ctx.addQuadCurve(to: p(0.86, 0.10), control: p(0.5, 0.30))
         ctx.strokePath()
 
-        // Arrow head pointing into the gap (counter-clockwise travel).
-        let a = rad(gapStart - 4)
-        let tip = CGPoint(x: center.x + radius * cos(a), y: center.y + radius * sin(a))
-        let t = CGPoint(x: -sin(a), y: cos(a))   // direction of travel
-        let n = CGPoint(x: cos(a), y: sin(a))    // outward
-        let length: CGFloat = 5.2, half: CGFloat = 3.1
-        let apex = CGPoint(x: tip.x + t.x * length * 0.65, y: tip.y + t.y * length * 0.65)
-        let base = CGPoint(x: tip.x - t.x * length * 0.35, y: tip.y - t.y * length * 0.35)
-        ctx.move(to: apex)
-        ctx.addLine(to: CGPoint(x: base.x + n.x * half, y: base.y + n.y * half))
-        ctx.addLine(to: CGPoint(x: base.x - n.x * half, y: base.y - n.y * half))
-        ctx.closePath()
-        ctx.fillPath()
+        // Stem.
+        ctx.setLineWidth(1.6)
+        ctx.move(to: p(0.5, 0.18))
+        ctx.addQuadCurve(to: p(0.5, 0.62), control: p(0.44, 0.40))
+        ctx.strokePath()
 
-        // Brain in the middle.
-        let config = NSImage.SymbolConfiguration(pointSize: rect.width * 0.42, weight: .bold)
-        if let brain = NSImage(systemSymbolName: "brain", accessibilityDescription: nil)?.withSymbolConfiguration(config) {
-            let s = brain.size
-            brain.draw(in: CGRect(x: center.x - s.width / 2, y: center.y - s.height / 2, width: s.width, height: s.height))
-        } else {
-            ctx.fillEllipse(in: CGRect(x: center.x - 2.5, y: center.y - 2.5, width: 5, height: 5))
+        // Left leaf (bigger) and right leaf.
+        func leaf(from a: CGPoint, to b: CGPoint, bulge c1: CGPoint, _ c2: CGPoint) {
+            ctx.move(to: a)
+            ctx.addQuadCurve(to: b, control: c1)
+            ctx.addQuadCurve(to: a, control: c2)
+            ctx.fillPath()
         }
+        leaf(from: p(0.49, 0.58), to: p(0.06, 0.90), bulge: p(0.12, 0.55), p(0.42, 0.95))
+        leaf(from: p(0.52, 0.62), to: p(0.94, 0.80), bulge: p(0.66, 0.96), p(0.88, 0.56))
     }
 }

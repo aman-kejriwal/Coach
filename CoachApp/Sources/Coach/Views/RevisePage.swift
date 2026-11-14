@@ -29,9 +29,9 @@ struct RevisePage: View {
                 .navigationTitle(topic.title)
                 .navigationSubtitle(topic.folderDisplay)
         } else {
-            ContentUnavailableView("Topic not found", systemImage: "questionmark.folder",
-                                   description: Text("It may have been deleted or untracked."))
-                .navigationTitle("Revise")
+            ContentUnavailableView("Plant not found", systemImage: "leaf",
+                                   description: Text("It may have been deleted or uprooted."))
+                .navigationTitle("Water")
         }
     }
 }
@@ -109,8 +109,8 @@ private struct ReviseContent: View {
                     .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 Spacer()
                 if let scope {
-                    Label("Revising \(VaultStore.display(scope, root: store.coachFolderName)) · \(remainingInScope) more due",
-                          systemImage: "folder")
+                    Label("Watering \(VaultStore.display(scope, root: store.coachFolderName)) · \(remainingInScope) more thirsty",
+                          systemImage: "drop")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -119,10 +119,10 @@ private struct ReviseContent: View {
                 ConfidenceBadge(confidence: topic.confidence)
                 DueLabel(topic: topic, now: store.now).font(.callout)
                 Text("·").foregroundStyle(.tertiary)
-                Text(topic.lastReviewed.map { "Last revised \($0.formatted(.relative(presentation: .named)))" } ?? "Never revised")
+                Text(topic.lastReviewed.map { "Last watered \($0.formatted(.relative(presentation: .named)))" } ?? "Never watered")
                     .foregroundStyle(.secondary)
                 Text("·").foregroundStyle(.tertiary)
-                Text("\(topic.reviewCount) review\(topic.reviewCount == 1 ? "" : "s")\(topic.streak > 0 ? " · \(topic.streak) in a row" : "")")
+                Text("\(topic.reviewCount) watering\(topic.reviewCount == 1 ? "" : "s")\(topic.streak > 0 ? " · \(topic.streak) in a row" : "")")
                     .foregroundStyle(.secondary)
             }
             .font(.callout)
@@ -136,7 +136,7 @@ private struct ReviseContent: View {
                     .font(.title3)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
-                    .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                    .background(Garden.leaf.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
             } else if logged == nil {
                 Button("Add a recall question to this file…") { openWindow.editNote(topic.id) }
                     .buttonStyle(.link)
@@ -148,7 +148,7 @@ private struct ReviseContent: View {
                     .scrollContentBackground(.hidden)
                     .padding(6)
                     .frame(minHeight: 110)
-                    .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+                    .gardenCard(radius: 8)
                     .disabled(logged != nil)
                 if recall.isEmpty {
                     Text("Write what you remember: key ideas, steps, formulas, examples…")
@@ -171,7 +171,7 @@ private struct ReviseContent: View {
                 MarkdownView(markdown: noteText, noteURL: topic.url)
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+                    .gardenCard(radius: 8)
                 if let attempts = note?.section(CoachKey.recallAttemptsHeading) {
                     DisclosureGroup("Earlier recall attempts") {
                         MarkdownView(markdown: attempts).padding(.top, 6)
@@ -190,16 +190,16 @@ private struct ReviseContent: View {
     }
 
     private var rateSection: some View {
-        card(step: 3, title: "Rate", subtitle: topic.isDue(now: store.now)
-             ? "How well did you remember it? Low means it comes back sooner."
-             : "How well did you remember it? You're early (\(topic.dueDescription(now: store.now).lowercased())), so a good rating stretches the gap a little less.") {
+        card(step: 3, title: "Water", subtitle: topic.isDue(now: store.now)
+             ? "How well did you remember it? A young plant needs water again sooner."
+             : "How well did you remember it? You're watering early (\(Garden.dueText(topic, now: store.now).lowercased())), so a good rating stretches the gap a little less.") {
             HStack(spacing: 8) {
                 ForEach(Array(Confidence.range), id: \.self) { c in
                     let next = Scheduler.afterReview(of: topic, confidence: c).nextReview
                     Button { rate(c) } label: {
                         VStack(spacing: 3) {
-                            Text("\(c)").font(.title2.bold()).monospacedDigit()
-                            Text(Confidence.label(c)).font(.caption)
+                            Text(Garden.stageEmoji(c)).font(.title2)
+                            Text("\(c) · \(Garden.stageName(c))").font(.caption)
                             Text(Self.relativeDay(next)).font(.caption2).foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity)
@@ -210,7 +210,7 @@ private struct ReviseContent: View {
                     }
                     .buttonStyle(.plain)
                     .keyboardShortcut(KeyEquivalent(Character("\(c)")), modifiers: .command)
-                    .help("⌘\(c): \(Confidence.detail(c)) Next review \(next.formatted(date: .complete, time: .omitted)).")
+                    .help("⌘\(c): \(Garden.stageDetail(c)) Next watering \(next.formatted(date: .complete, time: .omitted)).")
                 }
             }
             HStack {
@@ -225,17 +225,17 @@ private struct ReviseContent: View {
                     Button("1 week") { postpone(7) }
                 }
                 .fixedSize()
-                Button("Close Without Rating") { dismiss() }
+                Button("Close Without Watering") { dismiss() }
             }
         }
     }
 
     private func loggedBanner(_ l: (confidence: Int, next: Date)) -> some View {
         HStack(spacing: 14) {
-            Image(systemName: "checkmark.circle.fill").font(.title).foregroundStyle(.green)
+            Text("💧").font(.title)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Review logged · confidence \(l.confidence)").font(.headline)
-                Text("Next review \(l.next.formatted(date: .complete, time: .omitted)) (\(Self.relativeDay(l.next)))")
+                Text("Watered · \(Garden.stageEmoji(l.confidence)) \(Garden.stageName(l.confidence))").font(.headline)
+                Text("Next watering \(l.next.formatted(date: .complete, time: .omitted)) (\(Self.relativeDay(l.next)))")
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -256,7 +256,7 @@ private struct ReviseContent: View {
             }
         }
         .padding(16)
-        .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+        .background(Garden.leaf.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
     }
 
     @ViewBuilder
@@ -264,12 +264,12 @@ private struct ReviseContent: View {
         let entries = note.map(ReviewLog.entries) ?? []
         let points = entries.filter { $0.confidence != nil }
         if !entries.isEmpty {
-            card(step: nil, title: "History", subtitle: "Confidence over time, from this note's review log.") {
+            card(step: nil, title: "Growth", subtitle: "How this plant has grown, from the note's review log.") {
                 if points.count >= 2 {
                     Chart(Array(points.enumerated()), id: \.offset) { _, e in
                         LineMark(x: .value("Date", e.date), y: .value("Confidence", e.confidence!))
                             .interpolationMethod(.monotone)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Garden.soil.opacity(0.6))
                         PointMark(x: .value("Date", e.date), y: .value("Confidence", e.confidence!))
                             .foregroundStyle(Confidence.color(e.confidence!))
                             .symbolSize(60)
@@ -304,7 +304,7 @@ private struct ReviseContent: View {
                     Text("\(step)")
                         .font(.caption.bold())
                         .frame(width: 20, height: 20)
-                        .background(Circle().fill(Color.accentColor.opacity(0.2)))
+                        .background(Circle().fill(Garden.leaf.opacity(0.22)))
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.headline)
@@ -315,8 +315,7 @@ private struct ReviseContent: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12).fill(.background))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
+        .gardenCard()
     }
 
     private func rate(_ c: Int) {

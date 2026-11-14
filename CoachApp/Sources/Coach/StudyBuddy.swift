@@ -177,7 +177,7 @@ final class StudyBuddy {
     private func revise() {
         hop()
         Notifier.shared.startRevising()
-        leave(message: "Yay! Good luck! ♥", fast: true)
+        leave(message: "Yay! Happy watering! 💧", fast: true)
     }
 
     private func later() {
@@ -203,14 +203,14 @@ final class StudyBuddy {
 
     private func message() -> String {
         let sound = model.species.sound
-        guard let store else { return "\(sound) Time to revise?" }
+        guard let store else { return "\(sound) Time to water the garden?" }
         let plan = store.plan
         let n = plan.today.count
-        var options = ["\(sound) \(n) file\(n == 1 ? "" : "s") to revise today."]
-        if let first = plan.today.first { options.append("\(sound) Shall we do “\(first.title)”?") }
-        if plan.doneToday > 0, plan.goal > 0 { options.append("\(sound) \(plan.doneToday) of \(plan.goal) done. Keep going!") }
-        if let weak = plan.today.first(where: { $0.confidence <= 2 }) { options.append("\(sound) “\(weak.title)” is slipping away…") }
-        options.append("\(sound) Just five minutes of revising?")
+        var options = ["\(sound) \(Garden.plants(n)) \(n == 1 ? "is" : "are") thirsty today. 💧"]
+        if let first = plan.today.first { options.append("\(sound) Shall we water “\(first.title)”?") }
+        if plan.doneToday > 0, plan.goal > 0 { options.append("\(sound) \(plan.doneToday) of \(plan.goal) watered. Keep going! 🌿") }
+        if let weak = plan.today.first(where: { $0.confidence <= 2 }) { options.append("\(sound) “\(weak.title)” is starting to wilt… 🥀") }
+        options.append("\(sound) Just five minutes in the garden?")
         return options.randomElement()!
     }
 }
@@ -269,11 +269,12 @@ struct BuddyView: View {
                 .fixedSize(horizontal: false, vertical: true)
             if model.showsButtons {
                 HStack(spacing: 6) {
-                    Button("Revise Now", action: revise)
+                    Button("Water Now", action: revise)
                         .buttonStyle(.borderedProminent)
                     Button("Later", action: later)
                 }
                 .controlSize(.small)
+                .tint(Garden.leaf)
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
         }

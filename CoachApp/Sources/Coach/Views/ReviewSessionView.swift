@@ -19,13 +19,14 @@ struct ReviewSessionView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(queue.isEmpty ? "Review" : "Review · \(min(index + 1, queue.count)) of \(queue.count)")
+                Text(queue.isEmpty ? "Watering round" : "Watering round · \(min(index + 1, queue.count)) of \(queue.count)")
                     .font(.headline)
                 Spacer()
                 Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
             }
             .padding()
             ProgressView(value: Double(index), total: Double(max(queue.count, 1)))
+                .tint(Garden.water)
                 .padding(.horizontal)
 
             if let topic = current {
@@ -50,7 +51,7 @@ struct ReviewSessionView: View {
                     ConfidenceBadge(confidence: topic.confidence)
                     DueLabel(topic: topic, now: store.now).font(.caption)
                     if let last = topic.lastReviewed {
-                        Text("· last revised \(last.formatted(.relative(presentation: .named)))")
+                        Text("· last watered \(last.formatted(.relative(presentation: .named)))")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -59,7 +60,7 @@ struct ReviewSessionView: View {
             if let q = note?.section(CoachKey.recallHeading) {
                 Text(q).font(.title3).padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                    .background(Garden.leaf.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
             } else {
                 Text("Try to explain this topic from memory before you open the note.")
                     .foregroundStyle(.secondary)
@@ -71,7 +72,7 @@ struct ReviewSessionView: View {
                                                       title: topic.title) ?? "", noteURL: topic.url)
                         .padding(12)
                 }
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+                .gardenCard(radius: 8)
             } else {
                 Button { revealed = true } label: {
                     Label("Show Note", systemImage: "eye").frame(maxWidth: .infinity)
@@ -82,7 +83,7 @@ struct ReviewSessionView: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("How confident are you now? (press 1–5)").font(.caption).foregroundStyle(.secondary)
+                Text("How well is it growing now? (press 1–5)").font(.caption).foregroundStyle(.secondary)
                 HStack(spacing: 6) {
                     ForEach(Array(Confidence.range), id: \.self) { c in
                         ConfidenceButton(confidence: c, shortcut: true) { rate(topic, c) }
@@ -112,12 +113,12 @@ struct ReviewSessionView: View {
     private var finished: some View {
         VStack(spacing: 12) {
             Spacer()
-            Image(systemName: "checkmark.seal.fill").font(.system(size: 56)).foregroundStyle(.green)
-            Text(reviewed > 0 ? "Session complete" : "Nothing to revise right now").font(.title.bold())
+            Text(reviewed > 0 ? "🌻" : "🌤️").font(.system(size: 56))
+            Text(reviewed > 0 ? "Round complete" : "Nothing is thirsty right now").font(.title.bold())
             if reviewed > 0 {
                 Text(store.plan.isGoalMet
-                     ? "You revised \(reviewed) file\(reviewed == 1 ? "" : "s"). Today's goal is done."
-                     : "You revised \(reviewed) file\(reviewed == 1 ? "" : "s"). See you at the next review.")
+                     ? "You watered \(Garden.plants(reviewed)). Today's round is done."
+                     : "You watered \(Garden.plants(reviewed)). See you at the next watering.")
                     .foregroundStyle(.secondary)
             }
             Button("Close") { dismiss() }.keyboardShortcut(.defaultAction).padding(.top)

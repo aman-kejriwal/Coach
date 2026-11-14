@@ -20,6 +20,7 @@ struct CoachApp: App {
         WindowGroup("Revise", id: "revise", for: ReviseTarget.self) { $target in
             RevisePage(target: $target)
                 .environment(store)
+                .tint(Garden.leaf)
                 .frame(minWidth: 640, minHeight: 560)
         }
         .defaultSize(width: 880, height: 860)
@@ -28,6 +29,7 @@ struct CoachApp: App {
         WindowGroup("Edit Note", id: "editor", for: String.self) { $topicID in
             NoteEditorWindow(topicID: $topicID)
                 .environment(store)
+                .tint(Garden.leaf)
                 .frame(minWidth: 620, minHeight: 480)
         }
         .defaultSize(width: 980, height: 780)
@@ -44,6 +46,7 @@ struct CoachApp: App {
         Settings {
             SettingsView()
                 .environment(store)
+                .tint(Garden.leaf)
         }
     }
 }
@@ -87,27 +90,27 @@ struct CoachCommands: Commands {
         let _ = StudyBuddy.shared.attach(store: store, openWindow: openWindow)
         // Replaces the default "New Window" item, which would open an empty revise window.
         CommandGroup(replacing: .newItem) {
-            Button("New File…") {
+            Button("Plant Files…") {
                 openWindow(id: "main")
                 store.presentedSheet = .addTopic(folder: nil)
             }
             .keyboardShortcut("n")
             .disabled(store.vaultURL == nil)
 
-            Button("New Folder…") {
+            Button("New Bed…") {
                 openWindow(id: "main")
                 store.presentedSheet = .newFolder(parent: [])
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
             .disabled(store.vaultURL == nil)
 
-            Button("Revise Selected File") {
+            Button("Water Selected Plant") {
                 if let id = store.selectedTopicID { openWindow.revise(id) }
             }
             .keyboardShortcut("o")
             .disabled(store.topic(id: store.selectedTopicID) == nil)
 
-            Button("Start Review") {
+            Button("Start Watering") {
                 openWindow(id: "main")
                 store.presentedSheet = .review
             }

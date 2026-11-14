@@ -17,7 +17,7 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 12) {
             if store.vaultURL == nil {
                 Text("Coach").font(.headline)
-                Text("Choose your Obsidian vault to get started.").foregroundStyle(.secondary)
+                Text("Choose your Obsidian vault to start your garden.").foregroundStyle(.secondary)
                 Button("Open Coach") { showMain() }
             } else {
                 header
@@ -41,17 +41,18 @@ struct MenuBarView: View {
         }
         .padding(14)
         .frame(width: 340)
+        .tint(Garden.leaf)
     }
 
     private var header: some View {
         HStack {
             VStack(alignment: .leading) {
-                Text("Coach").font(.headline)
+                Text("🌱 Coach").font(.headline)
                 Text(subtitle).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
             if !store.reviewQueue.isEmpty {
-                Button("Start Review") {
+                Button("Start Watering") {
                     showMain()
                     store.presentedSheet = .review
                 }
@@ -65,27 +66,27 @@ struct MenuBarView: View {
         let plan = store.plan
         let n = plan.today.count
         if n > 0 {
-            let goal = plan.goal > 0 ? " · \(min(plan.doneToday, plan.goal)) of \(plan.goal) done" : ""
-            return "\(n) file\(n == 1 ? "" : "s") to revise today\(goal)"
+            let goal = plan.goal > 0 ? " · \(min(plan.doneToday, plan.goal)) of \(plan.goal) watered" : ""
+            return "\(Garden.plants(n)) to water today\(goal)"
         }
-        if plan.isGoalMet { return plan.moreDue.isEmpty ? "Today's goal is done" : "Goal done · \(plan.moreDue.count) more due" }
-        return "All caught up"
+        if plan.isGoalMet { return plan.moreDue.isEmpty ? "The garden is watered" : "Round done · \(plan.moreDue.count) more thirsty" }
+        return "Nothing is thirsty"
     }
 
     private var dueList: some View {
         let due = store.reviewQueue
         return VStack(alignment: .leading, spacing: 8) {
             if due.isEmpty {
-                Label(store.plan.isGoalMet ? "Today's goal is done" : "Nothing to revise today", systemImage: "checkmark.seal")
+                Label(store.plan.isGoalMet ? "The garden is watered 🌻" : "Nothing is thirsty today", systemImage: "leaf")
                     .foregroundStyle(.secondary)
             }
             ForEach(due.prefix(6)) { topic in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Circle().fill(Confidence.color(topic.confidence)).frame(width: 7, height: 7)
+                        Text(Garden.stageEmoji(topic.confidence))
                         Button(topic.title) { openWindow.revise(topic.id) }
                             .buttonStyle(.plain)
-                            .help("Open the revision page")
+                            .help("Water this plant")
                         .lineLimit(1)
                         Spacer()
                         DueLabel(topic: topic, now: store.now).font(.caption2)
@@ -105,19 +106,19 @@ struct MenuBarView: View {
 
     private var quickAdd: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Quick add").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            TextField("New file…", text: $quickTitle)
+            Text("Quick plant").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            TextField("New plant…", text: $quickTitle)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit(add)
-            FolderPicker(title: "Folder", selection: $quickFolder)
+            FolderPicker(title: "Bed", selection: $quickFolder)
                 .controlSize(.small)
             HStack(spacing: 4) {
                 ConfidencePicker(selection: $quickConfidence, compact: true)
-                Button("Add", action: add)
+                Button("Plant", action: add)
                     .disabled(quickTitle.trimmingCharacters(in: .whitespaces).isEmpty || quickFolder == nil)
             }
             if let added {
-                Text("Added “\(added)”").font(.caption).foregroundStyle(.green)
+                Text("Planted “\(added)” 🌱").font(.caption).foregroundStyle(Garden.leaf)
             }
         }
     }
