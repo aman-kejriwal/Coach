@@ -4,7 +4,9 @@ import Observation
 import SwiftUI
 
 enum PresentedSheet: Identifiable {
-    case addTopic
+    /// Add one or several files. `folder` pre-selects a folder (from a folder's "Add Files" button); nil = choose.
+    case addTopic(folder: [String]?)
+    case newFolder(parent: [String])
     case review
     var id: String { "\(self)" }
 }
@@ -21,6 +23,7 @@ final class VaultStore {
     private(set) var vaultURL: URL?
     private(set) var topics: [Topic] = []
     private(set) var untrackedNotes: [URL] = []
+    private(set) var folders: [[String]] = []
     private(set) var isScanning = false
     private(set) var lastUndo: UndoRecord?
     /// Bumped every few minutes and at midnight so "due" counts stay correct while the app sits open.
@@ -34,10 +37,17 @@ final class VaultStore {
     @ObservationIgnored private var watcher: VaultWatcher?
     @ObservationIgnored private var pendingScan: Task<Void, Never>?
     @ObservationIgnored private var clock: Timer?
+    @ObservationIgnored private var attachmentStore: AttachmentStore?
+
+    /// Pasted images: saving them and finding them again for `![[embeds]]`.
+    var attachments: AttachmentStore? {
+        guard let vaultURL, let coachRoot else { return nil }
+        if attachmentStore?.vault != vaultURL { attachmentStore = AttachmentStore(vault: vaultURL, coachRoot: coachRoot) }
+        return attachmentStore
+    }
 
     static let vaultPathKey = "vaultPath"
     static let coachFolderKey = "coachFolderName"
-    static let lastSubjectKey = "lastSubject"
 
     var coachFolderName: String {
         let v = UserDefaults.standard.string(forKey: Self.coachFolderKey) ?? ""
@@ -68,13 +78,58 @@ final class VaultStore {
 
     // MARK: Derived
 
-    var dueTopics: [Topic] { topics.filter { $0.isDue(now: now) }.sorted(by: Topic.urgency) }
+    static let dailyGoalKey = "dailyGoal"
+    static var savedDailyGoal: Int { UserDefaults.standard.object(forKey: dailyGoalKey) as? Int ?? 5 }
+
+    /// Files to revise per day. Fewer due → topped up with nearly-due files; more due → the top ones by
+    /// priority (the rest stay available). 0 = off: just the due files.
+    var dailyGoal: Int = VaultStore.savedDailyGoal {
+        didSet {
+            UserDefaults.standard.set(dailyGoal, forKey: Self.dailyGoalKey)
+            afterChange()
+        }
+    }
+
+    /// Today's list (see `DailyPlan`).
+    var plan: DailyPlan { DailyPlan(topics: topics, goal: dailyGoal, now: now) }
+    /// Files left on today's list: the number on the menu bar, Dock and sidebar.
+    var todayCount: Int { plan.today.count }
+    /// What "Start Review" goes through: today's list, or once the goal is met, any files still due.
+    var reviewQueue: [Topic] { let p = plan; return p.today.isEmpty ? p.moreDue : p.today }
+    func reviewQueue(in folder: [String]?) -> [Topic] {
+        guard let folder else { return reviewQueue }
+        let p = plan
+        let inside = (p.today + p.moreDue).filter { $0.isInside(folder) }
+        return inside.isEmpty ? dueTopics(in: folder) : inside
+    }
+
+    /// Due files, highest priority first.
+    var dueTopics: [Topic] { topics.filter { $0.isDue(now: now) }.sorted(by: DailyPlan.byPriority(now: now)) }
     var dueCount: Int { topics.reduce(0) { $0 + ($1.isDue(now: now) ? 1 : 0) } }
-    var subjects: [String] { Array(Set(topics.map(\.subjectName))).sorted { $0.localizedStandardCompare($1) == .orderedAscending } }
     func topic(id: String?) -> Topic? { id.flatMap { id in topics.first { $0.id == id } } }
 
+    /// The Coach folder inside the vault. Only this folder is scanned; its subfolders are the hierarchy.
+    var coachRoot: URL? { vaultURL?.appendingPathComponent(coachFolderName, isDirectory: true) }
+
+    /// Folder tree with rolled-up statistics. Folders are never rated; only files are.
+    var tree: FolderNode {
+        guard let root = coachRoot else {
+            return FolderNode(name: coachFolderName, path: [], children: [], files: [], untracked: [])
+        }
+        return FolderTree.build(rootName: coachFolderName, root: root, topics: topics, untracked: untrackedNotes, folders: folders)
+    }
+
+    func dueTopics(in folder: [String]?) -> [Topic] {
+        guard let folder else { return dueTopics }
+        return dueTopics.filter { $0.isInside(folder) }
+    }
+
+    static func display(_ path: [String], root: String = "Coach") -> String {
+        path.isEmpty ? root : path.joined(separator: " › ")
+    }
+
     func relativePath(_ url: URL) -> String {
-        guard let root = vaultURL?.standardizedFileURL.path else { return url.path }
+        guard let root = coachRoot?.standardizedFileURL.path else { return url.path }
         let p = url.standardizedFileURL.path
         return p.hasPrefix(root + "/") ? String(p.dropFirst(root.count + 1)) : p
     }
@@ -84,9 +139,11 @@ final class VaultStore {
     func open(_ url: URL) {
         vaultURL = url
         UserDefaults.standard.set(url.path, forKey: Self.vaultPathKey)
+        if let root = coachRoot { try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true) }
         watcher = VaultWatcher(url: url) { [weak self] in self?.scheduleScan() }
         topics = []
         untrackedNotes = []
+        folders = []
         scanNow()
     }
 
@@ -115,11 +172,11 @@ final class VaultStore {
     }
 
     private func scan() async {
-        guard let root = vaultURL else { return }
+        guard let root = coachRoot else { return }
         isScanning = true
         let result = await Task.detached(priority: .userInitiated) { VaultScanner.scan(root: root) }.value
         isScanning = false
-        guard root == vaultURL else { return }
+        guard root == coachRoot else { return }
 
         if !result.duplicateIDs.isEmpty {
             // A copied note carries the original's id; give each copy its own identity and history.
@@ -130,12 +187,13 @@ final class VaultStore {
         }
         topics = result.topics
         untrackedNotes = result.untracked
+        folders = result.folders
         scanGeneration += 1
         afterChange()
     }
 
     private func afterChange() {
-        let due = vaultURL == nil ? 0 : dueCount
+        let due = vaultURL == nil ? 0 : todayCount
         NSApp?.dockTile.badgeLabel = due > 0 ? "\(due)" : nil
         Notifier.shared.reschedule(topics: topics)
     }
@@ -156,7 +214,7 @@ final class VaultStore {
     /// The note may have been renamed or moved in Obsidian since the last scan; find it again by id.
     private func currentURL(for topic: Topic) -> URL? {
         if FileManager.default.fileExists(atPath: topic.url.path) { return topic.url }
-        guard let root = vaultURL else { return nil }
+        guard let root = coachRoot else { return nil }
         return VaultScanner.scan(root: root).topics.first { $0.id == topic.id }?.url
     }
 
@@ -168,7 +226,7 @@ final class VaultStore {
         }
         do {
             let doc = try rewrite(url, undoLabel: undoLabel, change)
-            if let updated = Topic(document: doc, url: url), let i = topics.firstIndex(where: { $0.id == topic.id }) {
+            if let updated = Topic(document: doc, url: url, coachRoot: coachRoot), let i = topics.firstIndex(where: { $0.id == topic.id }) {
                 topics[i] = updated
             } else {
                 scheduleScan()
@@ -185,7 +243,7 @@ final class VaultStore {
 
     /// Writes all Coach keys for a newly added or newly tracked topic.
     private func applyNewTopicKeys(
-        to doc: inout NoteDocument, subject: String, confidence: Int, lastRevised: Date?, now: Date, logText: String
+        to doc: inout NoteDocument, confidence: Int, lastRevised: Date?, now: Date, logText: String
     ) {
         let next: Date
         var streak = 0
@@ -197,7 +255,7 @@ final class VaultStore {
             next = Scheduler.firstReview(confidence: confidence, addedAt: now)
         }
         doc.set(CoachKey.id, UUID().uuidString)
-        doc.set(CoachKey.subject, subject, quoted: true)
+        doc.set(CoachKey.subject, nil) // the folder is the hierarchy now
         doc.set(CoachKey.confidence, "\(confidence)")
         doc.set(CoachKey.created, CoachDates.dateTime(now))
         doc.set(CoachKey.lastReviewed, lastRevised.map(CoachDates.dateTime))
@@ -214,22 +272,43 @@ final class VaultStore {
 
     // MARK: Actions
 
+    func folderURL(_ path: [String]) -> URL? {
+        path.reduce(coachRoot) { $0?.appendingPathComponent($1, isDirectory: true) }
+    }
+
+    /// Creates `Coach/<parent>/<name>/`. Returns the new folder's path, or nil on failure.
     @discardableResult
-    func createTopic(title: String, subject: String, confidence: Int, recallQuestion: String,
-                     notes: String, lastRevised: Date?) -> Topic? {
-        guard let root = vaultURL else { return nil }
+    func createFolder(named name: String, in parent: [String]) -> [String]? {
+        let clean = VaultScanner.sanitizeFileName(name)
+        guard !clean.isEmpty, let url = folderURL(parent + [clean]) else {
+            errorMessage = "Please enter a folder name."
+            return nil
+        }
+        do {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            let path = parent + [clean]
+            if !folders.contains(path) { folders.append(path) }
+            return path
+        } catch {
+            errorMessage = "Couldn't create the folder: \(error.localizedDescription)"
+            return nil
+        }
+    }
+
+    /// Creates one rated file in `Coach/<folder>/`.
+    @discardableResult
+    func createTopic(title: String, folder: [String], confidence: Int, recallQuestion: String = "",
+                     notes: String = "", lastRevised: Date? = nil) -> Topic? {
         let name = VaultScanner.sanitizeFileName(title)
-        guard !name.isEmpty else { errorMessage = "Please enter a topic name."; return nil }
-        let subjectName = subject.trimmingCharacters(in: .whitespaces).isEmpty ? "General" : subject.trimmingCharacters(in: .whitespaces)
-        let folder = root.appendingPathComponent(coachFolderName, isDirectory: true)
-            .appendingPathComponent(VaultScanner.sanitizeFileName(subjectName), isDirectory: true)
+        guard !name.isEmpty else { errorMessage = "Please enter a file name."; return nil }
+        guard let dir = folderURL(folder) else { return nil }
 
         do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            var url = folder.appendingPathComponent(name + ".md")
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            var url = dir.appendingPathComponent(name + ".md")
             var n = 2
             while FileManager.default.fileExists(atPath: url.path) {
-                url = folder.appendingPathComponent("\(name) \(n).md")
+                url = dir.appendingPathComponent("\(name) \(n).md")
                 n += 1
             }
 
@@ -240,33 +319,43 @@ final class VaultStore {
 
             var doc = NoteDocument(text: body)
             let now = Date()
-            applyNewTopicKeys(to: &doc, subject: subjectName, confidence: confidence, lastRevised: lastRevised,
+            applyNewTopicKeys(to: &doc, confidence: confidence, lastRevised: lastRevised,
                               now: now, logText: "added (confidence \(confidence))")
             doc.addListIfMissing("tags", items: ["coach"])
             try doc.render().write(to: url, atomically: true, encoding: .utf8)
 
-            UserDefaults.standard.set(subjectName, forKey: Self.lastSubjectKey)
-            let topic = Topic(document: doc, url: url)
+            if !folder.isEmpty, !folders.contains(folder) { folders.append(folder) }
+            let topic = Topic(document: doc, url: url, coachRoot: coachRoot)
             if let topic { topics.append(topic) }
             afterChange()
             return topic
         } catch {
-            errorMessage = "Couldn't create the note: \(error.localizedDescription)"
+            errorMessage = "Couldn't create the file: \(error.localizedDescription)"
             return nil
         }
     }
 
+    static func parseBatch(_ text: String, defaultConfidence: Int) -> [(title: String, confidence: Int)] {
+        BatchInput.parse(text, defaultConfidence: defaultConfidence)
+    }
+
+    /// Creates several files at once. Returns how many were created.
+    @discardableResult
+    func createTopics(_ items: [(title: String, confidence: Int)], folder: [String]) -> Int {
+        items.reduce(0) { $0 + (createTopic(title: $1.title, folder: folder, confidence: $1.confidence) == nil ? 0 : 1) }
+    }
+
     /// Starts tracking a note that already exists in the vault. Only Coach's own keys are added.
     @discardableResult
-    func track(_ url: URL, subject: String, confidence: Int, lastRevised: Date?) -> String? {
+    func track(_ url: URL, confidence: Int, lastRevised: Date?) -> String? {
         do {
             var newID: String?
             let doc = try rewrite(url, undoLabel: "Track “\(url.deletingPathExtension().lastPathComponent)”") { doc in
                 guard doc.value(for: CoachKey.id) == nil else { return }
-                applyNewTopicKeys(to: &doc, subject: subject.isEmpty ? "General" : subject, confidence: confidence,
+                applyNewTopicKeys(to: &doc, confidence: confidence,
                                   lastRevised: lastRevised, now: Date(), logText: "added to Coach (confidence \(confidence))")
             }
-            if let topic = Topic(document: doc, url: url) {
+            if let topic = Topic(document: doc, url: url, coachRoot: coachRoot) {
                 newID = topic.id
                 if !topics.contains(where: { $0.id == topic.id }) { topics.append(topic) }
                 untrackedNotes.removeAll { $0 == url }
@@ -285,7 +374,7 @@ final class VaultStore {
         let now = Date()
         let minutes = duration.map { max(1, Int(($0 / 60).rounded())) }
         let recallText = recall?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let r = Scheduler.afterReview(confidence: confidence, previousStreak: topic.streak, reviewedAt: now)
+        let r = Scheduler.afterReview(of: topic, confidence: confidence, at: now)
         mutate(topic, undoLabel: "Review of “\(topic.title)”") { doc in
             doc.set(CoachKey.confidence, "\(confidence)")
             doc.set(CoachKey.lastReviewed, CoachDates.dateTime(now))
@@ -344,6 +433,28 @@ final class VaultStore {
         } catch {
             errorMessage = "Couldn't undo: \(error.localizedDescription)"
         }
+    }
+
+    enum SaveOutcome { case saved, conflict, failed }
+
+    /// Saves the recall question and note text written in Coach's editor. Frontmatter and Coach's own
+    /// sections are kept. Returns `.conflict` (and writes nothing) when the note was edited elsewhere,
+    /// e.g. in Obsidian, since the editor loaded `original`, unless `overwrite` is true.
+    @discardableResult
+    func saveNote(_ topic: Topic, _ edit: EditableNote, basedOn original: EditableNote, overwrite: Bool = false) -> SaveOutcome {
+        guard let url = currentURL(for: topic) else {
+            errorMessage = "Couldn't find “\(topic.title)” in the vault. It may have been deleted."
+            return .failed
+        }
+        if !overwrite, let onDisk = noteBody(for: url)?.editable,
+           !onDisk.isSame(as: original), !onDisk.isSame(as: edit) {
+            return .conflict
+        }
+        errorMessage = nil
+        mutate(topic, undoLabel: "Edit of “\(topic.title)”") { $0.applyEditable(edit) }
+        if errorMessage != nil { return .failed }
+        scanGeneration += 1 // open revise pages / detail panes reload the note
+        return .saved
     }
 
     func noteBody(for url: URL) -> NoteDocument? {

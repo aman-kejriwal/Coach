@@ -120,3 +120,22 @@ struct NotePreview: View {
             ?? AttributedString(md)
     }
 }
+
+/// Shown where a file's note would be when it has no text yet.
+struct EmptyNotePrompt: View {
+    let action: () -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "doc.text.magnifyingglass").font(.title).foregroundStyle(.secondary)
+            Text("No notes yet").font(.headline)
+            Text("Write what you need to revise (key points, steps, examples, mistakes) so it's here next time.")
+                .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Button(action: action) { Label("Write Notes", systemImage: "square.and.pencil") }
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity)
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+    }
+}

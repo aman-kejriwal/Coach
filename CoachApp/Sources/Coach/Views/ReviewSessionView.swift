@@ -36,7 +36,7 @@ struct ReviewSessionView: View {
         }
         .frame(width: 620, height: 600)
         .onAppear {
-            queue = store.dueTopics.map(\.id)
+            queue = store.reviewQueue.map(\.id)
             loadNote()
         }
     }
@@ -44,7 +44,7 @@ struct ReviewSessionView: View {
     private func card(_ topic: Topic) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(topic.subjectName.uppercased()).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text(topic.folderDisplay.uppercased()).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 Text(topic.title).font(.largeTitle.bold())
                 HStack {
                     ConfidenceBadge(confidence: topic.confidence)
@@ -68,7 +68,7 @@ struct ReviewSessionView: View {
             if revealed {
                 ScrollView {
                     MarkdownView(markdown: note?.body(removingSections: [CoachKey.recallHeading, CoachKey.reviewLogHeading],
-                                                      title: topic.title) ?? "")
+                                                      title: topic.title) ?? "", noteURL: topic.url)
                         .padding(12)
                 }
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
@@ -113,9 +113,11 @@ struct ReviewSessionView: View {
         VStack(spacing: 12) {
             Spacer()
             Image(systemName: "checkmark.seal.fill").font(.system(size: 56)).foregroundStyle(.green)
-            Text(reviewed > 0 ? "Session complete" : "Nothing due right now").font(.title.bold())
+            Text(reviewed > 0 ? "Session complete" : "Nothing to revise right now").font(.title.bold())
             if reviewed > 0 {
-                Text("You revised \(reviewed) topic\(reviewed == 1 ? "" : "s"). See you at the next review.")
+                Text(store.plan.isGoalMet
+                     ? "You revised \(reviewed) file\(reviewed == 1 ? "" : "s"). Today's goal is done."
+                     : "You revised \(reviewed) file\(reviewed == 1 ? "" : "s"). See you at the next review.")
                     .foregroundStyle(.secondary)
             }
             Button("Close") { dismiss() }.keyboardShortcut(.defaultAction).padding(.top)

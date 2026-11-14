@@ -22,10 +22,22 @@ struct TopicDetailView: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Note").font(.headline)
-                    MarkdownView(markdown: note?.body(removingSections: [CoachKey.recallHeading], title: topic.title) ?? "")
-                        .padding(14)
-                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+                    HStack {
+                        Text("Note").font(.headline)
+                        Spacer()
+                        Button { editNote() } label: { Label("Edit", systemImage: "square.and.pencil") }
+                            .controlSize(.small)
+                    }
+                    let text = note?.body(removingSections: [CoachKey.recallHeading, CoachKey.reviewLogHeading,
+                                                             CoachKey.recallAttemptsHeading], title: topic.title) ?? ""
+                    if text.isEmpty {
+                        EmptyNotePrompt(action: editNote)
+                    } else {
+                        MarkdownView(markdown: text, noteURL: topic.url)
+                            .padding(14)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+                    }
                 }
             }
             .padding(24)
@@ -47,7 +59,7 @@ struct TopicDetailView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(topic.title).font(.largeTitle.bold()).textSelection(.enabled)
                 HStack(spacing: 8) {
-                    Label(topic.subjectName, systemImage: "folder").foregroundStyle(.secondary)
+                    Label(topic.folderDisplay, systemImage: "folder").foregroundStyle(.secondary)
                     ConfidenceBadge(confidence: topic.confidence)
                 }
             }
@@ -56,6 +68,9 @@ struct TopicDetailView: View {
                 Button { openWindow.revise(topic.id) } label: { Label("Revise Now", systemImage: "rectangle.portrait.and.arrow.forward") }
                     .buttonStyle(.borderedProminent)
                     .help("Open a dedicated revision page for this topic (⌘O, or double-click it in the list)")
+                Button(action: editNote) { Label("Edit Note", systemImage: "square.and.pencil") }
+                    .keyboardShortcut("e", modifiers: .command)
+                    .help("Write the recall question and notes for this file (⌘E)")
                 Button { store.openInObsidian(topic.url) } label: { Label("Open in Obsidian", systemImage: "arrow.up.forward.app") }
                 Menu {
                     TopicMenu(topic: topic)
@@ -65,6 +80,8 @@ struct TopicDetailView: View {
             }
         }
     }
+
+    private func editNote() { openWindow.editNote(topic.id) }
 
     private var facts: some View {
         Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 8) {
@@ -101,7 +118,7 @@ struct TopicDetailView: View {
             HStack {
                 Button("Log Review") { store.review(topic, confidence: rating) }
                     .buttonStyle(.borderedProminent)
-                Text("Next review in \(Scheduler.intervalDays(confidence: rating, streak: rating <= 2 ? 0 : topic.streak)) days")
+                Text("Next review \(Scheduler.afterReview(of: topic, confidence: rating).nextReview.formatted(.relative(presentation: .named)))")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Only Change Confidence") { store.setConfidence(topic, to: rating) }

@@ -2,25 +2,32 @@ import Charts
 import CoachCore
 import SwiftUI
 
+/// What a revision window shows: one file, plus (optionally) the folder whose due files it walks through.
+struct ReviseTarget: Codable, Hashable {
+    var topicID: String
+    /// When set, "Next" only suggests due files inside this folder.
+    var scope: [String]?
+}
+
 extension OpenWindowAction {
-    /// Opens (or brings forward) the dedicated revision window for a topic.
-    @MainActor func revise(_ topicID: String) {
-        self(id: "revise", value: topicID)
+    /// Opens (or brings forward) the dedicated revision window for a file.
+    @MainActor func revise(_ topicID: String, scope: [String]? = nil) {
+        self(id: "revise", value: ReviseTarget(topicID: topicID, scope: scope))
         NSApp.activate(ignoringOtherApps: true)
     }
 }
 
-/// Root of a "Revise" window. The bound id can change in place ("Next due topic").
+/// Root of a "Revise" window. The bound target can change in place ("Next due file").
 struct RevisePage: View {
     @Environment(VaultStore.self) private var store
-    @Binding var topicID: String?
+    @Binding var target: ReviseTarget?
 
     var body: some View {
-        if let id = topicID, let topic = store.topic(id: id) {
-            ReviseContent(topic: topic, topicID: $topicID)
-                .id(id) // fresh state (timer, scratchpad, rating) for each topic
+        if let target, let topic = store.topic(id: target.topicID) {
+            ReviseContent(topic: topic, scope: target.scope, target: $target)
+                .id(target.topicID) // fresh state (timer, scratchpad, rating) for each file
                 .navigationTitle(topic.title)
-                .navigationSubtitle(topic.subjectName)
+                .navigationSubtitle(topic.folderDisplay)
         } else {
             ContentUnavailableView("Topic not found", systemImage: "questionmark.folder",
                                    description: Text("It may have been deleted or untracked."))
@@ -32,8 +39,10 @@ struct RevisePage: View {
 private struct ReviseContent: View {
     @Environment(VaultStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
     let topic: Topic
-    @Binding var topicID: String?
+    let scope: [String]?
+    @Binding var target: ReviseTarget?
 
     @State private var startedAt = Date()
     @State private var recall = ""
@@ -47,8 +56,9 @@ private struct ReviseContent: View {
                    title: topic.title) ?? ""
     }
 
-    /// The next due topic other than this one, most urgent first.
-    private var nextDue: Topic? { store.dueTopics.first { $0.id != topic.id } }
+    /// The next due file other than this one (inside the scope folder, if any), most urgent first.
+    private var nextDue: Topic? { store.reviewQueue(in: scope).first { $0.id != topic.id } }
+    private var remainingInScope: Int { store.reviewQueue(in: scope).filter { $0.id != topic.id }.count }
 
     var body: some View {
         ScrollView {
@@ -73,8 +83,13 @@ private struct ReviseContent: View {
                         .foregroundStyle(.secondary)
                 }
                 .help("Time on this topic")
+                Button { openWindow.editNote(topic.id) } label: {
+                    Label("Edit Note", systemImage: "square.and.pencil")
+                }
+                .keyboardShortcut("e", modifiers: .command)
+                .help("Write the recall question and notes for this file (⌘E)")
                 Button { store.openInObsidian(topic.url) } label: {
-                    Label("Edit in Obsidian", systemImage: "square.and.pencil")
+                    Label("Open in Obsidian", systemImage: "arrow.up.forward.app")
                 }
                 .help("Open this note in Obsidian. Changes show up here automatically.")
             }
@@ -89,8 +104,16 @@ private struct ReviseContent: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(topic.subjectName.uppercased())
-                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            HStack {
+                Text(topic.folderDisplay.uppercased())
+                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Spacer()
+                if let scope {
+                    Label("Revising \(VaultStore.display(scope, root: store.coachFolderName)) · \(remainingInScope) more due",
+                          systemImage: "folder")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
             Text(topic.title).font(.system(size: 34, weight: .bold)).textSelection(.enabled)
             HStack(spacing: 10) {
                 ConfidenceBadge(confidence: topic.confidence)
@@ -114,6 +137,10 @@ private struct ReviseContent: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
                     .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            } else if logged == nil {
+                Button("Add a recall question to this file…") { openWindow.editNote(topic.id) }
+                    .buttonStyle(.link)
+                    .font(.callout)
             }
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $recall)
@@ -138,9 +165,12 @@ private struct ReviseContent: View {
 
     private var noteSection: some View {
         card(step: 2, title: "Check", subtitle: revealed ? "Compare with what you wrote. What did you miss?" : "Reveal the note when you're ready.") {
-            if revealed {
-                MarkdownView(markdown: noteText)
+            if revealed && noteText.isEmpty {
+                EmptyNotePrompt { openWindow.editNote(topic.id) }
+            } else if revealed {
+                MarkdownView(markdown: noteText, noteURL: topic.url)
                     .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
                 if let attempts = note?.section(CoachKey.recallAttemptsHeading) {
                     DisclosureGroup("Earlier recall attempts") {
@@ -160,10 +190,12 @@ private struct ReviseContent: View {
     }
 
     private var rateSection: some View {
-        card(step: 3, title: "Rate", subtitle: "How well did you remember it? Low means it comes back sooner.") {
+        card(step: 3, title: "Rate", subtitle: topic.isDue(now: store.now)
+             ? "How well did you remember it? Low means it comes back sooner."
+             : "How well did you remember it? You're early (\(topic.dueDescription(now: store.now).lowercased())), so a good rating stretches the gap a little less.") {
             HStack(spacing: 8) {
                 ForEach(Array(Confidence.range), id: \.self) { c in
-                    let next = Scheduler.afterReview(confidence: c, previousStreak: topic.streak, reviewedAt: Date()).nextReview
+                    let next = Scheduler.afterReview(of: topic, confidence: c).nextReview
                     Button { rate(c) } label: {
                         VStack(spacing: 3) {
                             Text("\(c)").font(.title2.bold()).monospacedDigit()
@@ -214,7 +246,7 @@ private struct ReviseContent: View {
                 }
             }
             if let next = nextDue {
-                Button("Next: \(next.title) →") { topicID = next.id }
+                Button("Next: \(next.title) →") { target = ReviseTarget(topicID: next.id, scope: scope) }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return, modifiers: .command)
             } else {
@@ -288,7 +320,7 @@ private struct ReviseContent: View {
     }
 
     private func rate(_ c: Int) {
-        let next = Scheduler.afterReview(confidence: c, previousStreak: topic.streak, reviewedAt: Date()).nextReview
+        let next = Scheduler.afterReview(of: topic, confidence: c).nextReview
         store.review(topic, confidence: c, duration: Date().timeIntervalSince(startedAt),
                      recall: saveRecall ? recall : nil)
         withAnimation {
@@ -299,7 +331,7 @@ private struct ReviseContent: View {
 
     private func postpone(_ days: Int) {
         store.postpone(topic, days: days)
-        if let next = nextDue { topicID = next.id } else { dismiss() }
+        if let next = nextDue { target = ReviseTarget(topicID: next.id, scope: scope) } else { dismiss() }
     }
 
     static func clock(_ t: TimeInterval) -> String {

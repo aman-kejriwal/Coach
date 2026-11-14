@@ -9,6 +9,8 @@ struct MenuBarView: View {
 
     @State private var quickTitle = ""
     @State private var quickConfidence = 3
+    /// Quick-add needs a folder; nil = not chosen yet (Add stays disabled).
+    @State private var quickFolder: [String]?
     @State private var added: String?
 
     var body: some View {
@@ -28,6 +30,8 @@ struct MenuBarView: View {
             HStack {
                 Button("Open Coach") { showMain() }
                 Spacer()
+                Button { StudyBuddy.shared.visit() } label: { Image(systemName: "pawprint") }
+                    .help("Call your study buddy")
                 Button { openSettings(); NSApp.activate(ignoringOtherApps: true) } label: { Image(systemName: "gearshape") }
                     .help("Settings")
                 Button { NSApp.terminate(nil) } label: { Image(systemName: "power") }
@@ -43,11 +47,10 @@ struct MenuBarView: View {
         HStack {
             VStack(alignment: .leading) {
                 Text("Coach").font(.headline)
-                Text(store.dueCount == 0 ? "All caught up" : "\(store.dueCount) topic\(store.dueCount == 1 ? "" : "s") due")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            if store.dueCount > 0 {
+            if !store.reviewQueue.isEmpty {
                 Button("Start Review") {
                     showMain()
                     store.presentedSheet = .review
@@ -58,11 +61,23 @@ struct MenuBarView: View {
         }
     }
 
+    private var subtitle: String {
+        let plan = store.plan
+        let n = plan.today.count
+        if n > 0 {
+            let goal = plan.goal > 0 ? " · \(min(plan.doneToday, plan.goal)) of \(plan.goal) done" : ""
+            return "\(n) file\(n == 1 ? "" : "s") to revise today\(goal)"
+        }
+        if plan.isGoalMet { return plan.moreDue.isEmpty ? "Today's goal is done" : "Goal done · \(plan.moreDue.count) more due" }
+        return "All caught up"
+    }
+
     private var dueList: some View {
-        let due = store.dueTopics
+        let due = store.reviewQueue
         return VStack(alignment: .leading, spacing: 8) {
             if due.isEmpty {
-                Label("Nothing due today", systemImage: "checkmark.seal").foregroundStyle(.secondary)
+                Label(store.plan.isGoalMet ? "Today's goal is done" : "Nothing to revise today", systemImage: "checkmark.seal")
+                    .foregroundStyle(.secondary)
             }
             ForEach(due.prefix(6)) { topic in
                 VStack(alignment: .leading, spacing: 4) {
@@ -91,13 +106,15 @@ struct MenuBarView: View {
     private var quickAdd: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Quick add").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            TextField("New topic…", text: $quickTitle)
+            TextField("New file…", text: $quickTitle)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit(add)
+            FolderPicker(title: "Folder", selection: $quickFolder)
+                .controlSize(.small)
             HStack(spacing: 4) {
                 ConfidencePicker(selection: $quickConfidence, compact: true)
                 Button("Add", action: add)
-                    .disabled(quickTitle.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(quickTitle.trimmingCharacters(in: .whitespaces).isEmpty || quickFolder == nil)
             }
             if let added {
                 Text("Added “\(added)”").font(.caption).foregroundStyle(.green)
@@ -107,10 +124,8 @@ struct MenuBarView: View {
 
     private func add() {
         let title = quickTitle.trimmingCharacters(in: .whitespaces)
-        guard !title.isEmpty else { return }
-        let subject = UserDefaults.standard.string(forKey: VaultStore.lastSubjectKey) ?? "Inbox"
-        if store.createTopic(title: title, subject: subject, confidence: quickConfidence,
-                             recallQuestion: "", notes: "", lastRevised: nil) != nil {
+        guard !title.isEmpty, let folder = quickFolder else { return }
+        if store.createTopic(title: title, folder: folder, confidence: quickConfidence) != nil {
             added = title
             quickTitle = ""
         }

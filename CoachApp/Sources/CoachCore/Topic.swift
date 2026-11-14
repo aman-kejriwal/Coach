@@ -23,7 +23,8 @@ public enum CoachKey {
 public struct Topic: Identifiable, Hashable, Sendable {
     public var id: String
     public var url: URL
-    public var subject: String?
+    /// Folder path inside the Coach folder, e.g. ["DSA", "Graphs", "Shortest Paths"]. The folders are the hierarchy.
+    public var folder: [String]
     public var confidence: Int
     public var created: Date?
     public var lastReviewed: Date?
@@ -33,19 +34,33 @@ public struct Topic: Identifiable, Hashable, Sendable {
 
     /// The note's file name is the topic title, so renaming in Obsidian renames the topic.
     public var title: String { url.deletingPathExtension().lastPathComponent }
-    public var subjectName: String { subject?.isEmpty == false ? subject! : "General" }
+    /// Top-level folder (the subject).
+    public var subjectName: String { folder.first ?? "Coach" }
+    /// "DSA › Graphs › Shortest Paths"
+    public var folderDisplay: String { folder.isEmpty ? "Coach" : folder.joined(separator: " › ") }
+    /// True when this file is inside `path` (at any depth). The empty path is the whole Coach folder.
+    public func isInside(_ path: [String]) -> Bool { folder.starts(with: path) }
 
-    public init?(document doc: NoteDocument, url: URL, now: Date = Date()) {
+    /// `coachRoot` is the Coach folder; the file's folder path is computed relative to it.
+    public init?(document doc: NoteDocument, url: URL, coachRoot: URL? = nil, now: Date = Date()) {
         guard let id = doc.value(for: CoachKey.id) else { return nil }
         self.id = id
         self.url = url
-        subject = doc.value(for: CoachKey.subject)
+        folder = coachRoot.map { Self.relativeFolder(of: url, in: $0) } ?? []
         confidence = Confidence.clamp(Int(doc.value(for: CoachKey.confidence) ?? "") ?? 3)
         created = CoachDates.parse(doc.value(for: CoachKey.created))
         lastReviewed = CoachDates.parse(doc.value(for: CoachKey.lastReviewed))
         nextReview = CoachDates.parse(doc.value(for: CoachKey.nextReview)) ?? Calendar.current.startOfDay(for: now)
         reviewCount = Int(doc.value(for: CoachKey.reviewCount) ?? "") ?? 0
         streak = Int(doc.value(for: CoachKey.streak) ?? "") ?? 0
+    }
+
+    /// Folder components of `url` relative to `root` (empty if the file sits directly in root or outside it).
+    public static func relativeFolder(of url: URL, in root: URL) -> [String] {
+        let rootParts = root.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        let dirParts = url.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        guard dirParts.starts(with: rootParts) else { return [] }
+        return Array(dirParts.dropFirst(rootParts.count))
     }
 
     /// Negative = overdue by that many days, 0 = due today, positive = days remaining.

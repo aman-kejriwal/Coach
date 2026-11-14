@@ -1,3 +1,4 @@
+import CoachCore
 import SwiftUI
 
 /// Lightweight block renderer for Obsidian-flavoured Markdown: headings, bullets, numbered lists, checkboxes,
@@ -5,6 +6,9 @@ import SwiftUI
 /// and `[[wikilinks]]` show their display text.
 struct MarkdownView: View {
     let markdown: String
+    /// The note being shown, so `![[image.png]]` embeds can be found next to it.
+    var noteURL: URL? = nil
+    @Environment(VaultStore.self) private var store: VaultStore?
 
     var body: some View {
         let blocks = MDBlock.parse(markdown)
@@ -49,12 +53,11 @@ struct MarkdownView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .overlay(alignment: .leading) { Rectangle().fill(.tint).frame(width: 3) }
                 .background(Color.accentColor.opacity(0.06))
-        case .code(let text):
-            Text(text)
-                .font(.system(.callout, design: .monospaced))
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
+        case .code(let language, let text):
+            CodeBlockView(language: language, code: text)
+        case .image(let target, let width):
+            NoteImageView(target: target, width: width,
+                          url: store?.attachments?.resolve(target, from: noteURL))
         case .rule:
             Divider()
         case .paragraph(let text):
@@ -84,7 +87,8 @@ enum MDBlock: Equatable {
     case heading(Int, String)
     case listItem(indent: Int, marker: Marker, text: String)
     case quote(String)
-    case code(String)
+    case code(language: String?, String)
+    case image(target: String, width: CGFloat?)
     case rule
     case paragraph(String)
 
@@ -93,6 +97,7 @@ enum MDBlock: Equatable {
         var paragraph: [String] = []
         var quote: [String] = []
         var code: [String]?
+        var codeLanguage: String?
 
         func flush() {
             if !paragraph.isEmpty { blocks.append(.paragraph(paragraph.joined(separator: "\n"))); paragraph = [] }
@@ -103,11 +108,17 @@ enum MDBlock: Equatable {
             let line = raw.replacingOccurrences(of: "\t", with: "    ")
             let trimmed = line.trimmingCharacters(in: .whitespaces)
 
-            if trimmed.hasPrefix("```") {
-                if let c = code { blocks.append(.code(c.joined(separator: "\n"))); code = nil } else { flush(); code = [] }
+            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+                if let c = code {
+                    blocks.append(.code(language: codeLanguage, c.joined(separator: "\n"))); code = nil
+                } else {
+                    flush(); code = []; codeLanguage = CodeSyntax.fenceLanguage(trimmed)
+                }
                 continue
             }
             if code != nil { code!.append(raw); continue }
+
+            if let image = image(trimmed) { flush(); blocks.append(image); continue }
 
             if trimmed.isEmpty { flush(); continue }
 
@@ -138,9 +149,28 @@ enum MDBlock: Equatable {
             if !quote.isEmpty { flush() }
             paragraph.append(trimmed)
         }
-        if let c = code { blocks.append(.code(c.joined(separator: "\n"))) }
+        if let c = code { blocks.append(.code(language: codeLanguage, c.joined(separator: "\n"))) }
         flush()
         return blocks
+    }
+
+    /// A line that is just an image: `![[shot.png]]`, `![[shot.png|300]]` or `![alt](path.png)`.
+    private static func image(_ t: String) -> MDBlock? {
+        if t.hasPrefix("![["), t.hasSuffix("]]") {
+            let inner = t.dropFirst(3).dropLast(2)
+            guard !inner.contains("]") else { return nil }
+            let parts = inner.split(separator: "|", maxSplits: 1).map(String.init)
+            guard let target = parts.first, AttachmentStore.isImage(target) else { return nil }
+            let width = parts.count > 1 ? Double(parts[1].split(separator: "x").first ?? "").map { CGFloat($0) } : nil
+            return .image(target: target, width: width)
+        }
+        if t.hasPrefix("!["), t.hasSuffix(")"), let mid = t.range(of: "](") {
+            var target = String(t[mid.upperBound..<t.index(before: t.endIndex)])
+            if let space = target.firstIndex(of: " "), !target.hasPrefix("<") { target = String(target[..<space]) }
+            return target.isEmpty || t[t.index(t.startIndex, offsetBy: 2)..<mid.lowerBound].contains("]") ? nil
+                : .image(target: target, width: nil)
+        }
+        return nil
     }
 
     private static func listItem(_ t: String, indent: Int) -> MDBlock? {
@@ -155,5 +185,93 @@ enum MDBlock: Equatable {
             return .listItem(indent: indent, marker: .number(n), text: String(t.dropFirst(digits.count + 2)))
         }
         return nil
+    }
+}
+
+/// A fenced code block with syntax colours, its language and a Copy button.
+struct CodeBlockView: View {
+    let language: String?
+    let code: String
+    @State private var copied = false
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Text(Self.highlighted(code, language: language))
+                .font(.system(.callout, design: .monospaced))
+                .lineSpacing(2)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(12)
+                .padding(.top, language == nil ? 0 : 8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: CodeTheme.blockBackground), in: RoundedRectangle(cornerRadius: 7))
+        .overlay(alignment: .topTrailing) {
+            HStack(spacing: 8) {
+                if let language { Text(language.lowercased()).foregroundStyle(.tertiary) }
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(code, forType: .string)
+                    copied = true
+                    Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
+                } label: {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+                .help("Copy code")
+            }
+            .font(.caption)
+            .padding(6)
+        }
+    }
+
+    static func highlighted(_ code: String, language: String?) -> AttributedString {
+        var out = AttributedString(code)
+        for token in CodeSyntax.tokens(code, language: language) {
+            guard let r = Range(token.range, in: code),
+                  let lo = AttributedString.Index(r.lowerBound, within: out),
+                  let hi = AttributedString.Index(r.upperBound, within: out) else { continue }
+            out[lo..<hi].foregroundColor = Color(nsColor: CodeTheme.color(token.kind))
+            if CodeTheme.isBold(token.kind) { out[lo..<hi].font = .system(.callout, design: .monospaced).weight(.semibold) }
+        }
+        return out
+    }
+}
+
+/// An embedded image. Double-click opens it in Preview.
+struct NoteImageView: View {
+    let target: String
+    let width: CGFloat?
+    let url: URL?
+
+    var body: some View {
+        if let remote = URL(string: target), ["http", "https"].contains(remote.scheme?.lowercased() ?? "") {
+            AsyncImage(url: remote) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFit().frame(maxWidth: width ?? 640, maxHeight: 520, alignment: .leading)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                } else if phase.error != nil {
+                    missing
+                } else {
+                    ProgressView().controlSize(.small)
+                }
+            }
+        } else if let url, let image = ImageCache.image(at: url) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: min(width ?? image.size.width, 640), maxHeight: 520, alignment: .leading)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
+                .onTapGesture(count: 2) { NSWorkspace.shared.open(url) }
+                .help("\(url.lastPathComponent). Double-click to open")
+        } else {
+            missing
+        }
+    }
+
+    private var missing: some View {
+        Label("Image not found: \(target)", systemImage: "photo.badge.exclamationmark")
+            .font(.callout)
+            .foregroundStyle(.secondary)
     }
 }
