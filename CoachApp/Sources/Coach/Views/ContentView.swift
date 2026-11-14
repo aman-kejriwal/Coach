@@ -2,6 +2,8 @@ import CoachCore
 import SwiftUI
 
 enum SidebarItem: Hashable {
+    /// The whole garden drawn as one tree.
+    case overview
     case due, upcoming, critical
     /// A folder inside Coach/. `[]` is the Coach folder itself.
     case folder([String])
@@ -55,6 +57,7 @@ struct MainView: View {
         let tree = store.tree
         NavigationSplitView {
             List(selection: $sidebar) {
+                Label("Garden Overview", systemImage: "tree").tag(SidebarItem.overview)
                 Section("Watering") {
                     row("Today", "drop", .due, count: store.todayCount)
                     row("Next 7 Days", "sun.max", .upcoming,
@@ -80,6 +83,8 @@ struct MainView: View {
         } content: {
             Group {
                 switch sidebar ?? .due {
+                case .overview:
+                    GardenOverviewView(sidebar: $sidebar)
                 case .folder(let path):
                     FolderContentView(path: path, search: search, sidebar: $sidebar)
                 case .due:
@@ -148,6 +153,7 @@ struct MainView: View {
         guard let t = store.topic(id: id) else { return false }
         let now = store.now
         switch item {
+        case .overview: return true // every tracked file is a leaf on the tree
         case .due: return store.plan.all.contains { $0.id == t.id }
         case .upcoming: return (1...7).contains(t.daysUntilDue(now: now))
         case .critical: return t.confidence <= 2
@@ -286,6 +292,7 @@ struct TopicListView: View {
         let now = store.now
         var list: [Topic]
         switch filter {
+        case .overview: list = store.topics
         case .due: list = store.topics.filter { $0.isDue(now: now) }
         case .upcoming: list = store.topics.filter { (1...7).contains($0.daysUntilDue(now: now)) }
         case .critical: list = store.topics.filter { $0.confidence <= 2 }
