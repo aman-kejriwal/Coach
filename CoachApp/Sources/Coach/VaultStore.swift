@@ -12,6 +12,8 @@ enum PresentedSheet: Identifiable {
 }
 
 struct UndoRecord {
+    /// Identifies this change, so a screen can tell whether the undo slot still holds its own change.
+    let id = UUID()
     let url: URL
     let originalText: String
     let label: String
@@ -36,6 +38,9 @@ final class VaultStore {
 
     @ObservationIgnored private var watcher: VaultWatcher?
     @ObservationIgnored private var pendingScan: Task<Void, Never>?
+    /// Numbers each scan. Only the newest scan may apply its results, so a slow older scan that
+    /// finishes late can't overwrite newer ones (cancelling its task doesn't stop the scan itself).
+    @ObservationIgnored private var latestScan = 0
     @ObservationIgnored private var clock: Timer?
     @ObservationIgnored private var attachmentStore: AttachmentStore?
 
@@ -173,8 +178,11 @@ final class VaultStore {
 
     private func scan() async {
         guard let root = coachRoot else { return }
+        latestScan += 1
+        let token = latestScan
         isScanning = true
         let result = await Task.detached(priority: .userInitiated) { VaultScanner.scan(root: root) }.value
+        guard token == latestScan else { return } // a newer scan started meanwhile; it will apply its own results
         isScanning = false
         guard root == coachRoot else { return }
 
