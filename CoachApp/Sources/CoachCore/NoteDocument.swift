@@ -85,11 +85,27 @@ public struct NoteDocument: Equatable, Sendable {
     /// Text under a heading (e.g. `## Recall question`) up to the next heading of the same or higher level.
     public func section(_ heading: String) -> String? {
         let lines = body.components(separatedBy: "\n")
-        guard let h = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == heading }) else { return nil }
-        let level = Self.headingLevel(heading) ?? 6
-        let end = lines[(h + 1)...].firstIndex(where: { (Self.headingLevel($0) ?? 99) <= level }) ?? lines.count
-        let text = lines[(h + 1)..<end].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let r = Self.sectionRange(heading, in: lines) else { return nil }
+        let text = lines[(r.lowerBound + 1)..<r.upperBound].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? nil : text
+    }
+
+    /// Lines of a section: its heading up to the next heading of the same or higher level.
+    /// The recall question is a short paragraph usually followed by the note itself (no heading in between),
+    /// so it ends at the first blank line after its text instead. The blank lines after it belong to the range.
+    static func sectionRange(_ heading: String, in lines: [String]) -> Range<Int>? {
+        guard let h = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == heading }) else { return nil }
+        func blank(_ i: Int) -> Bool { lines[i].trimmingCharacters(in: .whitespaces).isEmpty }
+        if heading == CoachKey.recallHeading {
+            var end = h + 1
+            while end < lines.count, blank(end) { end += 1 }
+            while end < lines.count, !blank(end), headingLevel(lines[end]) == nil { end += 1 }
+            while end < lines.count, blank(end) { end += 1 }
+            return h..<end
+        }
+        let level = headingLevel(heading) ?? 6
+        let end = lines[(h + 1)...].firstIndex(where: { (headingLevel($0) ?? 99) <= level }) ?? lines.count
+        return h..<end
     }
 
     /// Appends a line at the end of a section, creating the section at the bottom of the note if needed.

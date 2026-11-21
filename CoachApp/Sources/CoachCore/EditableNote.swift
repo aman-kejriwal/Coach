@@ -45,16 +45,23 @@ extension NoteDocument {
 
         var recallBlock: [String] = []
         let q = EditableNote.trim(edit.recallQuestion)
-        if !q.isEmpty { recallBlock = [CoachKey.recallHeading] + q.components(separatedBy: "\n") }
+        if !q.isEmpty {
+            // No blank lines inside: a blank line is where the recall question ends (see `sectionRange`).
+            recallBlock = [CoachKey.recallHeading] + q.components(separatedBy: "\n")
+                .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        }
 
         var blocks: [[String]] = []
-        if let first = contentLines.first, Self.headingLevel(first) == 1 {
+        if recallBlock.isEmpty {
+            // Nothing to insert: keep the note exactly as written.
+            if !contentLines.isEmpty { blocks.append(contentLines) }
+        } else if let first = contentLines.first, Self.headingLevel(first) == 1 {
             blocks.append([first])
             if !recallBlock.isEmpty { blocks.append(recallBlock) }
             let rest = Array(contentLines.dropFirst()).dropLeadingBlankLines()
             if !rest.isEmpty { blocks.append(rest) }
         } else {
-            if !recallBlock.isEmpty { blocks.append(recallBlock) }
+            blocks.append(recallBlock)
             if !contentLines.isEmpty { blocks.append(contentLines) }
         }
         blocks.append(contentsOf: kept)

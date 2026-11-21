@@ -276,7 +276,25 @@ final class MarkdownNSTextView: NSTextView {
         return tc.size.width - 2 * tc.lineFragmentPadding
     }
 
-    /// Re-applies styling (e.g. after a resize, so images fit the new width).
+    /// Restyles after every edit (typing, paste, undo, formatting commands), once the edit is complete.
+    /// Styling must not happen while the storage is still processing the edit: restyling the whole text
+    /// there widens the edited range to the whole note, and AppKit then moves the caret to its end.
+    override func didChangeText() {
+        if !hasMarkedText() { restyle() } // composing (e.g. accents): restyled when the text is committed
+        super.didChangeText()
+    }
+
+    /// Replaces all the text (e.g. reloaded from disk), keeping the caret where it was as far as possible.
+    func replaceAllText(_ text: String) {
+        let sel = selectedRange()
+        string = text
+        restyle()
+        let len = (text as NSString).length
+        setSelectedRange(NSRange(location: min(sel.location, len), length: 0))
+    }
+
+    /// Re-applies styling (e.g. after a resize, so images fit the new width). Changes attributes only,
+    /// so the text and the caret stay put.
     func restyle() {
         guard let storage = textStorage else { return }
         storage.beginEditing()
@@ -495,7 +513,6 @@ struct MarkdownEditor: NSViewRepresentable {
         container.widthTracksTextView = true
         layout.addTextContainer(container)
         context.coordinator.storage = storage
-        storage.delegate = context.coordinator
 
         let tv = MarkdownNSTextView(frame: .zero, textContainer: container)
         tv.saveImage = saveImage
@@ -522,6 +539,7 @@ struct MarkdownEditor: NSViewRepresentable {
         tv.delegate = context.coordinator
         tv.updateDragTypeRegistration()
         tv.string = text
+        tv.restyle()
         tv.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
 
         let scroll = NSScrollView()
@@ -540,30 +558,27 @@ struct MarkdownEditor: NSViewRepresentable {
         controller.textView = tv
         tv.saveImage = saveImage
         tv.lookUpImage = lookUpImage
-        if tv.string != text { // replaced from outside (reloaded from disk)
-            let sel = tv.selectedRange()
-            tv.string = text
-            let len = (text as NSString).length
-            tv.setSelectedRange(NSRange(location: min(sel.location, len), length: 0))
+        // Replaced from outside (reloaded from disk). A value we sent up ourselves can arrive late while
+        // you type; writing it back would undo keystrokes and move the cursor, so it's skipped.
+        if tv.string != text, text != context.coordinator.lastSent {
+            context.coordinator.lastSent = text
+            tv.replaceAllText(text)
         }
     }
 
-    final class Coordinator: NSObject, NSTextViewDelegate, NSTextStorageDelegate {
+    final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: MarkdownEditor
         var storage: NSTextStorage?
         weak var textView: MarkdownNSTextView?
+        /// The text last passed to the binding from the text view.
+        var lastSent: String?
 
         init(_ parent: MarkdownEditor) { self.parent = parent }
 
         func textDidChange(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView else { return }
+            lastSent = tv.string
             parent.text = tv.string
-        }
-
-        func textStorage(_ textStorage: NSTextStorage, willProcessEditing editedMask: NSTextStorageEditActions,
-                         range editedRange: NSRange, changeInLength delta: Int) {
-            guard editedMask.contains(.editedCharacters) else { return }
-            MarkdownHighlighter.highlight(textStorage, images: textView?.lookUpImage, columnWidth: textView?.columnWidth ?? 600)
         }
 
         func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {

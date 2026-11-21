@@ -39,10 +39,8 @@ extension NoteDocument {
     public func body(removingSections headings: [String], title: String? = nil) -> String {
         var lines = body.components(separatedBy: "\n")
         for heading in headings {
-            guard let h = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == heading }) else { continue }
-            let level = Self.headingLevel(heading) ?? 6
-            let end = lines[(h + 1)...].firstIndex(where: { (Self.headingLevel($0) ?? 99) <= level }) ?? lines.count
-            lines.removeSubrange(h..<end)
+            guard let r = Self.sectionRange(heading, in: lines) else { continue }
+            lines.removeSubrange(r)
         }
         if let title, let first = lines.firstIndex(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }),
            lines[first].trimmingCharacters(in: .whitespaces) == "# \(title)" {

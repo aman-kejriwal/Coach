@@ -271,6 +271,22 @@ import Testing
         #expect(e.content == "# Dijkstra\n\n## Notes\nOld text")
     }
 
+    /// Text right under the recall question (no heading between) stays in the note, and saving
+    /// without a recall question leaves the note exactly as typed.
+    @Test func roundTripKeepsNoteText() {
+        for (q, content) in [("Why?", "# Dijkstra\nline one\n\nline two"), ("Why?", "intro\nmore"), ("", "# Dijkstra\nline one")] {
+            var doc = NoteDocument(text: original)
+            doc.applyEditable(EditableNote(recallQuestion: q, content: content))
+            let back = NoteDocument(text: doc.render()).editable
+            #expect(back.recallQuestion == q)
+            #expect(back.content.replacingOccurrences(of: "\n\n", with: "\n") == content.replacingOccurrences(of: "\n\n", with: "\n"))
+            if q.isEmpty { #expect(back.content == content) }
+            var again = NoteDocument(text: doc.render())
+            again.applyEditable(back)
+            #expect(again.render() == doc.render())
+        }
+    }
+
     @Test func savesTextAndKeepsCoachData() {
         var doc = NoteDocument(text: original)
         doc.applyEditable(EditableNote(recallQuestion: "How does relaxation work?",

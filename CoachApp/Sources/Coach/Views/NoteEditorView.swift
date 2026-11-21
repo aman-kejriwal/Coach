@@ -38,7 +38,11 @@ private struct NoteEditor: View {
     @Environment(\.openWindow) private var openWindow
     let topic: Topic
 
+    /// The editor text we last loaded or saved. Unsaved changes are measured against this.
     @State private var lastSaved = EditableNote()
+    /// The file as it read back right after that load/save. Saving can tidy whitespace, so this can differ
+    /// from `lastSaved`; it's what tells our own write apart from an edit made in Obsidian.
+    @State private var lastOnDisk = EditableNote()
     @State private var recall = ""
     @State private var content = ""
     @State private var loaded = false
@@ -194,6 +198,7 @@ private struct NoteEditor: View {
         saveTask?.cancel()
         let e = store.noteBody(for: topic.url)?.editable ?? EditableNote()
         lastSaved = e
+        lastOnDisk = e
         recall = e.recallQuestion
         content = e.content
         loaded = true
@@ -219,9 +224,10 @@ private struct NoteEditor: View {
 
     private func save(overwrite: Bool) {
         let current = edit
-        switch store.saveNote(topic, current, basedOn: lastSaved, overwrite: overwrite) {
+        switch store.saveNote(topic, current, basedOn: lastOnDisk, overwrite: overwrite) {
         case .saved:
             lastSaved = current
+            lastOnDisk = store.noteBody(for: topic.url)?.editable ?? current
             savedAt = Date()
             status = isDirty ? .edited : .saved
         case .conflict:
@@ -232,8 +238,10 @@ private struct NoteEditor: View {
     }
 
     /// Something rescanned the vault: pick up edits made in Obsidian, or flag a conflict if we have our own.
+    /// Our own saves are ignored, so the text (and the cursor) is never replaced while you type.
     private func checkDisk() {
-        guard loaded, let onDisk = store.noteBody(for: topic.url)?.editable, !onDisk.isSame(as: lastSaved) else { return }
+        guard loaded, let onDisk = store.noteBody(for: topic.url)?.editable,
+              !onDisk.isSame(as: lastOnDisk), !onDisk.isSame(as: lastSaved) else { return }
         if isDirty {
             if !onDisk.isSame(as: edit) { status = .conflict }
         } else {
